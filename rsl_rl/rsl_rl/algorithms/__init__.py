@@ -30,3 +30,4 @@
 
 from .ppo import PPO
 from .amp_ppo import AMPPPO
+from .amp_teacher_student_ppo import AMPTSPPO

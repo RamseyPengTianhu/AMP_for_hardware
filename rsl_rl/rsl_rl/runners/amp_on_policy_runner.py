@@ -75,6 +75,9 @@ class AMPOnPolicyRunner:
             device, time_between_frames=self.env.dt, preload_transitions=True,
             num_preload_transitions=train_cfg['runner']['amp_num_preload_transitions'],
             motion_files=self.cfg["amp_motion_files"])
+        print('The type of amp_data is:',type(amp_data))
+        print('Amp_data is:',amp_data)
+
         amp_normalizer = Normalizer(amp_data.observation_dim)
         discriminator = AMPDiscriminator(
             amp_data.observation_dim * 2,
@@ -112,6 +115,7 @@ class AMPOnPolicyRunner:
         obs = self.env.get_observations()
         privileged_obs = self.env.get_privileged_observations()
         amp_obs = self.env.get_amp_observations()
+        print('size of amp_obs:', amp_obs.shape)
         critic_obs = privileged_obs if privileged_obs is not None else obs
         obs, critic_obs, amp_obs = obs.to(self.device), critic_obs.to(self.device), amp_obs.to(self.device)
         self.alg.actor_critic.train() # switch to train mode (for dropout for example)
@@ -132,6 +136,8 @@ class AMPOnPolicyRunner:
                     actions = self.alg.act(obs, critic_obs, amp_obs)
                     obs, privileged_obs, rewards, dones, infos, reset_env_ids, terminal_amp_states = self.env.step(actions)
                     next_amp_obs = self.env.get_amp_observations()
+
+
 
                     critic_obs = privileged_obs if privileged_obs is not None else obs
                     obs, critic_obs, next_amp_obs, rewards, dones = obs.to(self.device), critic_obs.to(self.device), next_amp_obs.to(self.device), rewards.to(self.device), dones.to(self.device)

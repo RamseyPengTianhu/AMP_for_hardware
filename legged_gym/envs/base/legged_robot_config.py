@@ -33,15 +33,25 @@ from .base_config import BaseConfig
 class LeggedRobotCfg(BaseConfig):
     class env:
         num_envs = 4096
-        num_observations = 235
+        num_observations = 100
         num_privileged_obs = None # if not None a priviledge_obs_buf will be returned by step() (critic obs for assymetric training). None is returned otherwise 
         num_actions = 12
+        num_policy_outputs = 12# 
+        num_terrain_obs = 187
+        num_obs_sequence =50
         env_spacing = 3.  # not used with heightfields/trimeshes 
         send_timeouts = True # send time out information to the algorithm
         episode_length_s = 20 # episode length in seconds
         reference_state_initialization = False # initialize state from reference data
+        include_history_steps = None  # Number of steps of history to include.
+# -----------Teacher----------------------
+        curriculum_factor = 0.8
+        convergence_rate = 0.997
+# ----------------------------------------
+
 
     class terrain:
+        evaluation_mode = False  # if True: evaluate the trained policy
         mesh_type = 'trimesh' # "heightfield" # none, plane, heightfield or trimesh
         horizontal_scale = 0.1 # [m]
         vertical_scale = 0.005 # [m]
@@ -51,7 +61,8 @@ class LeggedRobotCfg(BaseConfig):
         dynamic_friction = 1.0
         restitution = 0.
         # rough terrain only:
-        measure_heights = True
+        measure_heights = False
+        measure_heights_in_sim = True
         measured_points_x = [-0.8, -0.7, -0.6, -0.5, -0.4, -0.3, -0.2, -0.1, 0., 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8] # 1mx1.6m rectangle (without center line)
         measured_points_y = [-0.5, -0.4, -0.3, -0.2, -0.1, 0., 0.1, 0.2, 0.3, 0.4, 0.5]
         selected = False # select a unique terrain type and pass all arguments
@@ -68,6 +79,7 @@ class LeggedRobotCfg(BaseConfig):
 
     class commands:
         curriculum = False
+        fixed_commands = None  # None or [lin_vel_x, lin_vel_y, ang_vel_yaw]
         max_curriculum = 1.
         num_commands = 4 # default: lin_vel_x, lin_vel_y, ang_vel_yaw, heading (in heading mode ang_vel_yaw is recomputed from heading error)
         resampling_time = 10. # time before command are changed[s]
@@ -100,6 +112,8 @@ class LeggedRobotCfg(BaseConfig):
     class asset:
         file = ""
         foot_name = "None" # name of the feet bodies, used to index body state and contact force tensors
+        shoulder_name = 'shoulder'
+
         penalize_contacts_on = []
         terminate_after_contacts_on = []
         disable_gravity = False
@@ -123,12 +137,22 @@ class LeggedRobotCfg(BaseConfig):
         friction_range = [0.5, 1.25]
         randomize_base_mass = False
         added_mass_range = [-1., 1.]
+        randomize_com_offset = False
+        com_offset_range = [-0.0, 0.0]
         push_robots = True
         push_interval_s = 15
         max_push_vel_xy = 1.
         randomize_gains = False
         stiffness_multiplier_range = [0.9, 1.1]
         damping_multiplier_range = [0.9, 1.1]
+
+        # ------Teacher----
+        max_push_force = 10.
+        max_push_torque = 10.
+        bodyCom_offset_mean = [0, 0, 0]
+        bodyCom_offset_cov = [0.0, 0.0, 0.0]
+        # ------------------------
+
 
     class rewards:
         class scales:
@@ -157,17 +181,31 @@ class LeggedRobotCfg(BaseConfig):
         max_contact_force = 100. # forces above this value are penalized
 
     class normalization:
+        dof_history_interval = 1
+
         class obs_scales:
             lin_vel = 2.0
             ang_vel = 0.25
             dof_pos = 1.0
             dof_vel = 0.05
             height_measurements = 5.0
+
+        class priv_obs_scales:
+            contact_state = 1.0
+            contact_force = 0.1
+            contact_normal = 1.0
+            friction = 1.0
+            restitution = 1.0
+            thigh_and_shank_contact_state = 30.0
+            external_wrench = 1.0
+            airtime = 3.0
+        
         clip_observations = 100.
         clip_actions = 100.
 
     class noise:
-        add_noise = True
+        add_noise = False
+        heights_uniform_noise = False
         noise_level = 1.0 # scales other values
         class noise_scales:
             dof_pos = 0.01

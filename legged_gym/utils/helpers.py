@@ -100,29 +100,42 @@ def parse_sim_params(args, cfg):
 
     return sim_params
 
-def get_load_path(root, load_run=-1, checkpoint=-1):
+def get_load_path(root, load_run='-1', checkpoint=-1):
     try:
         runs = os.listdir(root)
-        #TODO sort by date to handle change of month
-        runs.sort()
+        # TODO sort by date to handle change of month
+        runs = sorted(runs,
+                      key=lambda x: os.path.getmtime(os.path.join(root, x))
+                      )
         if 'exported' in runs: runs.remove('exported')
         last_run = os.path.join(root, runs[-1])
     except:
         raise ValueError("No runs in this directory: " + root)
-    if load_run==-1:
+    if not load_run:
+        print('no load_run specified, automatically loading from the last run...')
+        load_run = '-1'
+    if load_run == '-1':
         load_run = last_run
     else:
         load_run = os.path.join(root, load_run)
 
-    if checkpoint==-1:
-        models = [file for file in os.listdir(load_run) if 'model' in file]
-        models.sort(key=lambda m: '{0:0>15}'.format(m))
-        model = models[-1]
+    if checkpoint == -1:
+        models = filter(
+            lambda x: os.path.isfile(os.path.join(load_run, x)) and os.path.splitext(x)[1] == ('.pt' or '.om'),
+            os.listdir(load_run))
+        models = sorted(models,
+                        key=lambda x: os.path.getmtime(os.path.join(load_run, x))
+                        )
+        try:
+            model = models[-1]
+        except:
+            raise ValueError("No model found in current load_run!")
     else:
-        model = "model_{}.pt".format(checkpoint) 
+        model = str(checkpoint)
 
     load_path = os.path.join(load_run, model)
     return load_path
+
 
 def update_cfg_from_args(env_cfg, cfg_train, args):
     # seed

@@ -56,8 +56,11 @@ def play(args):
 
     # prepare environment
     env, _ = task_registry.make_env(name=args.task, args=args, env_cfg=env_cfg)
-    _, _ = env.reset()
-    obs = env.get_observations()
+    _,_, _ = env.reset()
+    obs_dict = env.get_observations()
+    terrain_obs = env.get_terrain_observations()
+    obs, privileged_obs, obs_history = obs_dict["obs"], obs_dict["privileged_obs"],  obs_dict["obs_history"]
+
     # load policy
     train_cfg.runner.resume = True
     ppo_runner, train_cfg = task_registry.make_alg_runner(env=env, name=args.task, args=args, train_cfg=train_cfg)
@@ -80,8 +83,12 @@ def play(args):
     img_idx = 0
 
     for i in range(10*int(env.max_episode_length)):
-        actions = policy(obs.detach())
-        obs, _, rews, dones, infos, _, _ = env.step(actions.detach())
+        # actions = policy(obs, privileged_obs, terrain_obs)
+        actions = policy(obs)
+        # obs, _, rews, dones, infos, _, _ = env.step(actions.detach())
+        # actions = policy(obs, obs_history)
+        obs_dict, rewards, dones, infos, reset_env_ids, terminal_amp_states = env.step(actions)
+        obs, privileged_obs, obs_history = obs_dict["obs"], obs_dict["privileged_obs"], obs_dict["obs_history"]
         if RECORD_FRAMES:
             if i % 2:
                 filename = os.path.join(LEGGED_GYM_ROOT_DIR, 'logs', train_cfg.runner.experiment_name, 'exported', 'frames', f"{img_idx}.png")

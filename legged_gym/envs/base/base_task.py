@@ -32,6 +32,7 @@ import sys
 from isaacgym import gymapi
 from isaacgym import gymutil
 import numpy as np
+import collections
 import torch
 
 from legged_gym.envs.base import observation_buffer
@@ -63,8 +64,13 @@ class BaseTask():
         self.num_envs = cfg.env.num_envs
         self.num_obs = cfg.env.num_observations
         self.num_privileged_obs = cfg.env.num_privileged_obs
+        self.num_terrain_obs = cfg.env.num_terrain_obs
         self.num_actions = cfg.env.num_actions
+        print('cfg.env:',cfg.env)
+        self.num_policy_outputs = cfg.env.num_policy_outputs
+# ------------- AMP fuction added --------------
         self.include_history_steps = cfg.env.include_history_steps
+# -----------------------------------------------
 
         # optimization flags for pytorch JIT
         torch._C._jit_set_profiling_mode(False)
@@ -80,6 +86,14 @@ class BaseTask():
         self.reset_buf = torch.ones(self.num_envs, device=self.device, dtype=torch.long)
         self.episode_length_buf = torch.zeros(self.num_envs, device=self.device, dtype=torch.long)
         self.time_out_buf = torch.zeros(self.num_envs, device=self.device, dtype=torch.bool)
+        # ----------teacher---------------------
+        self.episode_v_integral = torch.zeros(self.num_envs,
+                                              device=self.device,
+                                              dtype=torch.float)
+        self.episode_w_integral = torch.zeros(self.num_envs,
+                                              device=self.device,
+                                              dtype=torch.float)
+        # ------------------------------------------
         if self.num_privileged_obs is not None:
             self.privileged_obs_buf = torch.zeros(self.num_envs, self.num_privileged_obs, device=self.device, dtype=torch.float)
         else: 
@@ -87,6 +101,24 @@ class BaseTask():
             # self.num_privileged_obs = self.num_obs
 
         self.extras = {}
+
+        # ----------teacher---------------------
+        # self.pos_error_his_deque = collections.deque(
+        #     maxlen=cfg.control.history_steps + 1)
+        # self.vel_his_deque = collections.deque(
+        #     maxlen=cfg.control.history_steps + 1)
+        # for i in range(cfg.control.history_steps):
+        #     self.pos_error_his_deque.append(
+        #         torch.zeros((self.num_envs, 12),
+        #                     dtype=torch.float,
+        #                     device=self.device))
+        #     self.vel_his_deque.append(
+        #         torch.zeros((self.num_envs, 12),
+        #                     dtype=torch.float,
+        #                     device=self.device))
+        # ------------------------------------------
+
+
 
         # create envs, sim and viewer
         self.create_sim()
