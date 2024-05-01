@@ -34,6 +34,8 @@ import torch.nn.functional as F
 import numpy as np
 
 from rsl_rl.utils import split_and_pad_trajectories
+import torch.nn.utils.rnn as rnn_utils
+
 
 
 class RolloutTsStorage:
@@ -75,6 +77,7 @@ class RolloutTsStorage:
         self.terrain_obs_shape = terrain_obs_shape
         self.obs_history_shape = obs_history_shape
         self.actions_shape = actions_shape
+        self.iterations = 0
 
         # Core
         self.observations = torch.zeros(num_transitions_per_env, num_envs, *obs_shape, device=self.device)
@@ -133,7 +136,6 @@ class RolloutTsStorage:
         self.actions_log_prob[self.step].copy_(transition.actions_log_prob.view(-1, 1))
         self.mu[self.step].copy_(transition.action_mean)
         self.sigma[self.step].copy_(transition.action_sigma)
-        # self._save_hidden_states(transition.hidden_states)
         self._save_hidden_states_LSTM(transition.hidden_states)
         self.step += 1
 
@@ -145,9 +147,6 @@ class RolloutTsStorage:
         hid_h = hidden_states[0] if isinstance(hidden_states[0], tuple) else (hidden_states[0],)
         hid_c = hidden_states[1] if isinstance(hidden_states[1], tuple) else (hidden_states[1],)
         # (hid_h, hid_c)= hidden_states
-
-
-
         # initialize if needed
         if self.saved_hidden_states_h is None:
             self.saved_hidden_states_h = [
@@ -251,15 +250,32 @@ class RolloutTsStorage:
                 old_sigma_batch = old_sigma[batch_idx]
                 yield obs_batch, critic_observations_batch, privileged_obs_batch, obs_history_batch, actions_batch, target_values_batch, advantages_batch, returns_batch, \
                        old_actions_log_prob_batch, old_mu_batch, old_sigma_batch, (None, None), None
+                # print('obs_batch.shape:',obs_batch.shape)
+                # print('privileged_obs_batch.shape:',privileged_obs_batch.shape)
+                obs_np = obs_batch.cpu().detach().numpy()
+                privileged_np = privileged_obs_batch.cpu().detach().numpy()
+                obs_shape = obs_np.shape
+                # Reshape masks_np to match obs_np shape
+                obs_csv_file = f'/home/tianhu/AMP_for_hardware/datasets/Save_data/{self.iterations}_mlp_obs_batch.csv'
+                privileged_csv_file = f'/home/tianhu/AMP_for_hardware/datasets/Save_data/{self.iterations}_mlp_privileged_batch.csv'
+
+                # Save each array to CSV
+                # Save obs_np to CSV with shape information
+                # np.savetxt(obs_csv_file, obs_np, delimiter=',', header=f"Shape: {obs_batch.shape}")
+
+                # Save privileged_obs_np to CSV with shape information
+                # np.savetxt(privileged_csv_file, privileged_np, delimiter=',', header=f"Shape: {privileged_obs_batch.shape}")
+                
+
 
     # for RNNs only
     def reccurent_mini_batch_generator(self, num_mini_batches, num_epochs=8):
 
         padded_obs_trajectories, trajectory_masks = split_and_pad_trajectories(self.observations, self.dones)
-        # if self.privileged_observations is not None:
-        #     padded_critic_obs_trajectories, _ = split_and_pad_trajectories(self.privileged_observations, self.dones)
-        # else:
-        #     padded_critic_obs_trajectories = padded_obs_trajectories
+        if self.privileged_observations is not None:
+            padded_critic_obs_trajectories, _ = split_and_pad_trajectories(self.privileged_observations, self.dones)
+        else:
+            padded_critic_obs_trajectories = padded_obs_trajectories
 
         padded_critic_obs_trajectories = padded_obs_trajectories
         padded_privileged_obs_trajectories,_ = split_and_pad_trajectories(self.privileged_observations, self.dones)
@@ -316,9 +332,11 @@ class RolloutTsStorage:
                        old_actions_log_prob_batch, old_mu_batch, old_sigma_batch, (hid_a_batch, hid_c_batch), masks_batch
 
                 first_traj = last_traj
-    # for RNNs only
+     # for RNNs only
     def lstm_mini_batch_generator(self, num_mini_batches, num_epochs=8):
 
+        print('self.observations.shape:',self.observations.shape)
+        padded_obs_trajectories, trajectory_masks = split_and_pad_trajectories(self.observations, self.dones)
         padded_obs_trajectories, trajectory_masks = split_and_pad_trajectories(self.observations, self.dones)
 
         mini_batch_size = self.num_envs  // num_mini_batches
@@ -383,3 +401,102 @@ class RolloutTsStorage:
                         (hid_h_batch, hid_c_batch), masks_batch
 
                 first_traj = last_traj
+
+    def lsstm_mini_batch_generator(self, num_mini_batches, num_epochs=8):
+        # Split and pad trajectories to prepare for batching
+        padded_obs_trajectories, trajectory_masks = split_and_pad_trajectories(self.observations, self.dones)
+        mini_batch_size = self.num_envs // num_mini_batches
+        print('mini_batch_size:',mini_batch_size)
+
+        desired_batch_size = self.num_envs
+        input_data = []  # List to accumulate sequences, masks, and hidden states
+        current_batch_size = 0
+        for ep in range(num_epochs):
+            
+            first_traj = 0
+
+            for i in range(num_mini_batches):
+                start = i * mini_batch_size
+                stop = (i + 1) * mini_batch_size
+
+                # Prepare mask indicating done indices
+                dones = self.dones.squeeze(-1)
+                last_was_done = torch.zeros_like(dones, dtype=torch.bool)
+                last_was_done[1:] = dones[:-1]
+                last_was_done[0] = True
+
+                # Compute trajectories batch size
+                trajectories_batch_size = torch.sum(last_was_done[:, start:stop])
+                last_traj = first_traj + trajectories_batch_size
+
+                # Accumulate sequences and hidden states for the current batch
+                masks_batch = trajectory_masks[:, first_traj:last_traj]
+                obs_batch = padded_obs_trajectories[:, first_traj:last_traj]
+                hid_h_batch = [
+                saved_hidden_states[:, first_traj:last_traj, :] for saved_hidden_states in self.saved_hidden_states_h
+                ]
+                hid_c_batch = [
+                    saved_hidden_states[:, first_traj:last_traj, :] for saved_hidden_states in self.saved_hidden_states_c
+                ]
+                # Append to input_data
+                input_data.append((obs_batch, (hid_h_batch, hid_c_batch), masks_batch))
+                current_batch_size += trajectories_batch_size
+                 # Check if accumulated batch size meets or exceeds fixed_batch_size
+            if current_batch_size >= desired_batch_size:
+                # Prepare input tensors for LSTM model
+                batch_obs = torch.cat([data[0] for data in input_data], dim=1)
+                batch_hid_h = tuple(torch.cat([data[1][0][i] for data in input_data], dim=1) for i in range(len(hid_h_batch)))
+                batch_hid_c = tuple(torch.cat([data[1][1][i] for data in input_data], dim=1) for i in range(len(hid_c_batch)))
+                batch_masks = torch.cat([data[2] for data in input_data], dim=1)
+
+                # Yield the complete batch
+                yield batch_obs, (batch_hid_h, batch_hid_c), batch_masks
+                print('batch_obs.shape:',batch_obs.shape)
+                print('batch_hid_h.shape:',batch_hid_h[0].shape)
+                print('batch_hid_c.shape:',batch_hid_c[0].shape)
+                print('batch_masks.shape:',batch_masks.shape)
+
+                # Reset input_data and current_batch_size for the next batch
+                input_data = []
+                current_batch_size = 0
+
+            # Update first_traj for the next mini-batch
+            first_traj = last_traj
+
+def pad_tensor(tensors_list, target_size):
+    # 假设 tensors_list 是一个包含若干个 m*q*n 张量的列表  
+        # tensors_list = [...]  # 这里应该是您的实际张量列表  
+  
+        # 创建一个新的列表来存储填充后的张量  
+        padded_tensors_list = []  
+                # 遍历原始张量列表中的每个张量  
+        # target_size = max([tensor.shape[1] for tensor in tensors_list])
+        for tensor in tensors_list:  
+            try:
+                m, q, n = tensor.shape  # 获取当前张量的形状  
+            except:
+                print(type(tensor))
+                print(dir(tensor))
+                #print(tensor.size(
+                print(tensor)
+      
+            # 如果 q 已经等于 229，则无需填充，直接添加到新列表中  
+            if q == target_size:  
+                padded_tensors_list.append(tensor)  
+                continue  
+      
+            # 提取填充值（第二个维度的最后一个元素）  
+            fill_value = tensor[:, -1, :].unsqueeze(1)  
+
+            # 创建一个用于填充的全1张量，形状为 (m, 229-q, n)  
+            repeat_times = torch.ones(m, target_size - q, n, dtype=torch.long)  
+      
+            # 使用repeat_interleave来重复填充值，创建填充部分  
+            fill_tensor = fill_value.repeat_interleave(repeat_times, dim=1)  
+      
+            # 使用 torch.cat 在第二个维度上将原始张量和填充张量拼接起来  
+            padded_tensor = torch.cat((tensor, fill_tensor), dim=1)  
+      
+            # 将填充后的张量添加到新列表中  
+            padded_tensors_list.append(padded_tensor)
+        return padded_tensors_list   

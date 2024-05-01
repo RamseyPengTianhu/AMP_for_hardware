@@ -664,6 +664,7 @@ class LeggedRobot(BaseTask):
         return torch.cat((joint_pos, foot_pos, base_lin_vel, base_ang_vel, joint_vel, z_pos), dim=-1)
         # -----------Without Joint space state------------------
         # return torch.cat((foot_pos, base_lin_vel, base_ang_vel, z_pos), dim=-1)
+        # return torch.cat((foot_pos, base_lin_vel, base_ang_vel,joint_vel, z_pos), dim=-1)
 
     def create_sim(self):
         """ Creates simulation, terrain and evironments

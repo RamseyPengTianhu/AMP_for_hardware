@@ -142,8 +142,6 @@ class AMPTSOnPolicyRunner:
         obs_dict = self.env.get_observations()
 
         obs, privileged_obs, obs_history = obs_dict["obs"], obs_dict["privileged_obs"], obs_dict["obs_history"]
-        # terrain_obs = self.env.get_terrain_observations()
-        # terrain_obs = self.env.get_terrain_observations()
         amp_obs = self.env.get_amp_observations()
         # critic_obs = privileged_obs if privileged_obs is not None else obs
         critic_obs = obs
@@ -209,7 +207,7 @@ class AMPTSOnPolicyRunner:
                 self.alg.compute_returns(obs, privileged_obs)
             
             # mean_value_loss, mean_surrogate_loss, mean_amp_loss, mean_grad_pen_loss, mean_policy_pred, mean_expert_pred = self.alg.update()
-            mean_value_loss, mean_surrogate_loss, mean_amp_loss, mean_grad_pen_loss, mean_policy_pred, mean_expert_pred, mean_latent_loss, aug_lstm_obs_batch, lstm_masks_batch= self.alg.update()
+            mean_value_loss, mean_surrogate_loss, mean_amp_loss, mean_grad_pen_loss, mean_policy_pred, mean_expert_pred, mean_latent_loss, mean_adaptation_loss, aug_lstm_obs_batch, lstm_masks_batch= self.alg.update()
             stop = time.time()
             learn_time = stop - start
             if self.log_dir is not None:
@@ -266,7 +264,8 @@ class AMPTSOnPolicyRunner:
         self.writer.add_scalar('Loss/surrogate', locs['mean_surrogate_loss'], locs['it'])
         self.writer.add_scalar('Loss/AMP', locs['mean_amp_loss'], locs['it'])
         self.writer.add_scalar('Loss/AMP_grad', locs['mean_grad_pen_loss'], locs['it'])
-        self.writer.add_scalar('Loss/latent', locs['mean_latent_loss'], locs['it'])
+        self.writer.add_scalar('Loss/LSTM_latent', locs['mean_latent_loss'], locs['it'])
+        self.writer.add_scalar('Loss/TCN_latent', locs['mean_adaptation_loss'], locs['it'])
         self.writer.add_scalar('Loss/learning_rate', self.alg.learning_rate, locs['it'])
         self.writer.add_scalar('Policy/mean_noise_std', mean_std.item(), locs['it'])
         self.writer.add_scalar('Perf/total_fps', fps, locs['it'])
@@ -291,7 +290,8 @@ class AMPTSOnPolicyRunner:
                           f"""{'AMP grad pen loss:':>{pad}} {locs['mean_grad_pen_loss']:.4f}\n"""
                           f"""{'AMP mean policy pred:':>{pad}} {locs['mean_policy_pred']:.4f}\n"""
                           f"""{'AMP mean expert pred:':>{pad}} {locs['mean_expert_pred']:.4f}\n"""
-                          f"""{'Latent loss:':>{pad}} {locs['mean_latent_loss']:.4f}\n"""
+                          f"""{'LSTM_Latent loss:':>{pad}} {locs['mean_latent_loss']:.4f}\n"""
+                          f"""{'TCN_Latent loss:':>{pad}} {locs['mean_adaptation_loss']:.4f}\n"""
                           f"""{'Mean action noise std:':>{pad}} {mean_std.item():.2f}\n"""
                           f"""{'Mean reward:':>{pad}} {statistics.mean(locs['rewbuffer']):.2f}\n"""
                           f"""{'Mean episode length:':>{pad}} {statistics.mean(locs['lenbuffer']):.2f}\n""")

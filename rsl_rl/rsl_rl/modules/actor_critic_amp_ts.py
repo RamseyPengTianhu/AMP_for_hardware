@@ -161,18 +161,18 @@ class ActorCriticAmpTs(nn.Module):
 # ----------------------------------------------------------------------
 # ---------------------------- Student  ------------------------------------------
 
-        # # Adaptation module
-        # adaptation_module_layers = []
-        # adaptation_module_layers.append(nn.Linear(num_obs_history, adaptation_hidden_dims[0]))
-        # adaptation_module_layers.append(activation)
-        # for l in range(len(adaptation_hidden_dims)):
-        #     if l == len(adaptation_hidden_dims) - 1:
-        #         adaptation_module_layers.append(nn.Linear(adaptation_hidden_dims[l], privileged_encoder_hidden_dims))
-        #     else:
-        #         adaptation_module_layers.append(nn.Linear(adaptation_hidden_dims[l], adaptation_hidden_dims[l + 1]))
-        #         adaptation_module_layers.append(activation)
-        # self.adaptation_module = nn.Sequential(*adaptation_module_layers)
-        # self.add_module(f"adaptation_module", self.adaptation_module)
+        # Adaptation module
+        adaptation_module_layers = []
+        adaptation_module_layers.append(nn.Linear(num_obs_history, adaptation_hidden_dims[0]))
+        adaptation_module_layers.append(activation)
+        for l in range(len(adaptation_hidden_dims)):
+            if l == len(adaptation_hidden_dims) - 1:
+                adaptation_module_layers.append(nn.Linear(adaptation_hidden_dims[l], privileged_encoder_latent_dims + terrain_encoder_latent_dims))
+            else:
+                adaptation_module_layers.append(nn.Linear(adaptation_hidden_dims[l], adaptation_hidden_dims[l + 1]))
+                adaptation_module_layers.append(activation)
+        self.adaptation_module = nn.Sequential(*adaptation_module_layers)
+        self.add_module(f"adaptation_module", self.adaptation_module)
 
 
         # LSTM Encoder
@@ -239,11 +239,6 @@ class ActorCriticAmpTs(nn.Module):
         # disable args validation for speedup
         Normal.set_default_validate_args = False
 
-        # seems that we get better performance without init
-        # self.init_memory_weights(s                    # print("!!!!!!!!!!!!!!!!!!!!")
-                    # print("!!!!!!!!!!!!!!!!!!!!")
-                    # print(self.env.step(actions))elf.memory_a, 0.001, 0.)
-        # self.init_memory_weights(self.memory_c, 0.001, 0.)
 
     @staticmethod
     # not used at the moment
@@ -412,7 +407,7 @@ class ActorCriticAmpTs(nn.Module):
     #     actions_mean = self.actor(torch.cat((observations, latent), dim=-1))
     #     policy_info["latents"] = latent.detach().cpu().numpy()
     #     return actions_mean
-    def act_inference(self, observations, privileged_observations=None, hidden_state = None, policy_info={}):
+    def act_inference(self, observations, observation_history, privileged_observations=None, hidden_state = None, policy_info={}):
         """
         Performs action selection during inference.
 
@@ -426,16 +421,17 @@ class ActorCriticAmpTs(nn.Module):
             Tensor: The inferred actions.
         """
 
-
-        # if privileged_observations is not None:
-        #     latent = self.privileged_factor_encoder(privileged_observations)
-        #     policy_info["gt_latents"] = latent.detach().cpu().numpy()
-        self.get_hidden_states()
-        out, (hx, cx) = self.memory.forward(observations, masks=None, hidden_states=(self.memory.hx, self.memory.cx))
-        student_latent = self.student_latent_encoder(out)
-        student_latent = student_latent.squeeze(0)
-        actions_mean = self.actor(torch.cat((observations, student_latent), dim=-1))
-        policy_info["latents"] = student_latent.detach().cpu().numpy()
+# -----------lstm------------------
+        # self.get_hidden_states()
+        # out, (hx, cx) = self.memory.forward(observations, masks=None, hidden_states=(self.memory.hx, self.memory.cx))
+        # student_latent = self.student_latent_encoder(out)
+        # student_latent = student_latent.squeeze(0)
+        # actions_mean = self.actor(torch.cat((observations, student_latent), dim=-1))
+        # policy_info["latents"] = student_latent.detach().cpu().numpy()
+# -----------TCN------------------
+        student_latentlatent = self.adaptation_module(observation_history)
+        actions_mean = self.actor(torch.cat((observations, student_latentlatent), dim=-1))
+        policy_info["latents"] = student_latentlatent.detach().cpu().numpy()
         return actions_mean
 
     def evaluate(self, critic_observations, privileged_observations, **kwargs):
@@ -524,5 +520,7 @@ class Memory(nn.Module):
         return out, (self.hx, self.cx)  # return hx and cx as a tuple
 
     def reset(self, dones=None):
-        self.hx[..., dones, :] = 0.0
-        self.cx[..., dones, :] = 0.0
+        if dones is not None:
+            self.hx[..., dones, :] = 0.0
+            self.cx[..., dones, :] = 0.0
+

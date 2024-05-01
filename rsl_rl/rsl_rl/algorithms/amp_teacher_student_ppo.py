@@ -107,7 +107,7 @@ class AMPTSPPO:
         self.optimizer = optim.Adam(params, lr=learning_rate)
         self.transition = RolloutTsStorage.Transition()
 # ------------- Teacher and Student framework  added --------------
-        # self.adaptation_optimizer = optim.Adam(params, lr=learning_rate)
+        self.adaptation_optimizer = optim.Adam(params, lr=learning_rate)
         self.latent_optimizer = optim.Adam(params, lr=learning_rate)
 # ----------------------------------------------
 
@@ -163,9 +163,6 @@ class AMPTSPPO:
         obs_buffer = torch.cat((obs_buffer[1:], obs_3D), dim=0)
         # dones_buffer = torch.cat((dones_buffer[:,1:], dones_3D), dim=1)
         dones_buffer = torch.cat((dones_buffer[1:], dones_3D), dim=0)
-        # dones_buffer[:, :-1] = dones_buffer[:, 1:]
-        # dones_buffer[:, -1] = dones_3D.squeeze()
-
 
     
 
@@ -283,7 +280,31 @@ class AMPTSPPO:
                 sigma_batch = self.actor_critic.action_std
                 entropy_batch = self.actor_critic.entropy
                 lstm_obs_batch, lstm_hid_batch, lstm_masks_batch = sample_lstm
+                
+
                 aug_lstm_obs_batch = lstm_obs_batch.detach()
+                # aug_lstm_hid_batch = lstm_hid_batch.detach()
+                # aug_lstm_masks_batch = lstm_masks_batch.detach()
+                print('aug_lstm_obs_batch.shape:',aug_lstm_obs_batch.shape)
+                print('lstm_masks_batch.shape:',lstm_masks_batch.shape)
+                # print('lstm_hid_batch.shape:',lstm_hid_batch.shape)
+                print('aug_obs_batch.shape:',aug_obs_batch.shape)
+                
+
+                # lstm_obs_np = lstm_obs_batch.cpu().detach().numpy()  # Convert to NumPy array
+                # lstm_hid_np = lstm_hid_batch.cpu().detach().numpy()
+                # lstm_masks_np = lstm_masks_batch.cpu().detach().numpy()
+                # print('lstm_hid_np.shape:',lstm_hid_np.shape)
+                # print('lstm_masks_np.shape:',lstm_masks_np.shape)
+
+
+                # num_batches = lstm_obs_np.shape[0]
+                # sequence_length = lstm_obs_np.shape[1]
+                # num_features = lstm_obs_np.shape[2]
+
+                # lstm_obs_flat = lstm_obs_np.reshape(num_batches * sequence_length, num_features)
+                # lstm_hid_flat = lstm_hid_np.reshape(num_batches * sequence_length, -1)  # Assuming hidden state shape is variable
+                # lstm_masks_flat = lstm_masks_np.reshape(num_batches * sequence_length, -1)  # Assuming mask shape is variable
 
                 # KL
                 if self.desired_kl != None and self.schedule == 'adaptive':
@@ -374,33 +395,36 @@ class AMPTSPPO:
 
 
 # # ----------------------Teacher and student policy framework-------------------
-#         # Adaptation module gradient step
-#         for epoch in range(self.num_adaptation_module_substeps):
-#             adaptation_pred = self.actor_critic.adaptation_module(obs_history_batch)
-#             with torch.no_grad():
-#                 adaptation_target = self.actor_critic.env_factor_encoder(privileged_obs_batch)
-#                 # residual = (adaptation_target - adaptation_pred).norm(dim=1)
+        # Adaptation module gradient step
+        for epoch in range(self.num_adaptation_module_substeps):
+            adaptation_pred = self.actor_critic.adaptation_module(obs_history_batch)
+            with torch.no_grad():
+                if self.measure_heights_in_sim:
+                    privileged_target = self.actor_critic.privileged_factor_encoder(privileged_obs_batch[:,:42])
+                    terrain_target = self.actor_critic.terrain_factor_encoder(privileged_obs_batch[:,42:])
+                    latent_target = torch.cat((privileged_target,terrain_target),dim=-1)
+                # residual = (adaptation_target - adaptation_pred).norm(dim=1)
 
-#             adaptation_loss = F.mse_loss(adaptation_pred, adaptation_target)
+            adaptation_loss = F.mse_loss(adaptation_pred, latent_target)
 
-#             self.adaptation_optimizer.zero_grad()
-#             adaptation_loss.backward()
-#             self.adaptation_optimizer.step()
+            self.adaptation_optimizer.zero_grad()
+            adaptation_loss.backward()
+            self.adaptation_optimizer.step()
 
-#             mean_adaptation_loss += adaptation_loss.item()
-# # -----------------------------------------------------------------------------
-#         num_updates = self.num_learning_epochs * self.num_mini_batches
-#         mean_value_loss /= num_updates
-#         mean_surrogate_loss /= num_updates
-# # ------------- AMP fuction added --------------
-#         mean_amp_loss /= num_updates# amp
-#         mean_grad_pen_loss /= num_updates# amp
-#         mean_policy_pred /= num_updates# amp
-#         mean_expert_pred /= num_updates# amp
-# # ----------------------------------------------
+            mean_adaptation_loss += adaptation_loss.item()
+# -----------------------------------------------------------------------------
+        num_updates = self.num_learning_epochs * self.num_mini_batches
+        mean_value_loss /= num_updates
+        mean_surrogate_loss /= num_updates
+# ------------- AMP fuction added --------------
+        mean_amp_loss /= num_updates# amp
+        mean_grad_pen_loss /= num_updates# amp
+        mean_policy_pred /= num_updates# amp
+        mean_expert_pred /= num_updates# amp
+# ----------------------------------------------
 
-# # ----------------------Teacher and student policy framework-------------------
-#         mean_adaptation_loss /= (num_updates * self.num_adaptation_module_substeps)
+# ----------------------Teacher and student policy framework-------------------
+        mean_adaptation_loss /= (num_updates * self.num_adaptation_module_substeps)
 # # -----------------------------------------------------------------------------
                 
         
@@ -410,6 +434,7 @@ class AMPTSPPO:
             hx, cx = lstm_hid_batch  # unpack the hidden states
             
             out, (hx, cx) = self.actor_critic.memory.forward(aug_lstm_obs_batch, masks=lstm_masks_batch, hidden_states=(hx, cx))
+            
             latent_pred = self.actor_critic.student_latent_encoder(out)
             if self.measure_heights_in_sim:
                 latent_pred = latent_pred.view(-1, 24)
@@ -447,4 +472,4 @@ class AMPTSPPO:
         self.storage.clear()
 
 
-        return mean_value_loss, mean_surrogate_loss, mean_amp_loss, mean_grad_pen_loss, mean_policy_pred, mean_expert_pred, mean_latent_loss, aug_lstm_obs_batch, lstm_masks_batch
+        return mean_value_loss, mean_surrogate_loss, mean_amp_loss, mean_grad_pen_loss, mean_policy_pred, mean_expert_pred, mean_latent_loss, mean_adaptation_loss, aug_lstm_obs_batch, lstm_masks_batch

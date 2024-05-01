@@ -6,6 +6,8 @@ import logging
 import torch
 import numpy as np
 from pybullet_utils import transformations
+import matplotlib.pyplot as plt
+
 
 from rsl_rl.utils import utils
 from rsl_rl.datasets import pose3d
@@ -51,17 +53,17 @@ class AMPLoader:
 
 # ---------------------------------No joint space input------------------------
 
-    # NO_JOINT_TAR_TOE_POS_LOCAL_START_IDX = ROOT_ROT_END_IDX
-    # NO_JOINT_TAR_TOE_POS_LOCAL_END_IDX = NO_JOINT_TAR_TOE_POS_LOCAL_START_IDX + TAR_TOE_POS_LOCAL_SIZE# 7+12 = 19
+    NO_JOINT_TAR_TOE_POS_LOCAL_START_IDX = ROOT_ROT_END_IDX
+    NO_JOINT_TAR_TOE_POS_LOCAL_END_IDX = NO_JOINT_TAR_TOE_POS_LOCAL_START_IDX + TAR_TOE_POS_LOCAL_SIZE# 7+12 = 19
 
-    # NO_JOINT_LINEAR_VEL_START_IDX = NO_JOINT_TAR_TOE_POS_LOCAL_END_IDX# 19
-    # NO_JOINT_LINEAR_VEL_END_IDX = NO_JOINT_LINEAR_VEL_START_IDX + LINEAR_VEL_SIZE# 19+3 = 22
+    NO_JOINT_LINEAR_VEL_START_IDX = NO_JOINT_TAR_TOE_POS_LOCAL_END_IDX# 19
+    NO_JOINT_LINEAR_VEL_END_IDX = NO_JOINT_LINEAR_VEL_START_IDX + LINEAR_VEL_SIZE# 19+3 = 22
 
-    # NO_JOINT_ANGULAR_VEL_START_IDX = NO_JOINT_LINEAR_VEL_END_IDX# 22
-    # NO_JOINT_ANGULAR_VEL_END_IDX = NO_JOINT_ANGULAR_VEL_START_IDX + ANGULAR_VEL_SIZE# 22+3 = 25
+    NO_JOINT_ANGULAR_VEL_START_IDX = NO_JOINT_LINEAR_VEL_END_IDX# 22
+    NO_JOINT_ANGULAR_VEL_END_IDX = NO_JOINT_ANGULAR_VEL_START_IDX + ANGULAR_VEL_SIZE# 22+3 = 25
 
-    # NO_JOINT_TAR_TOE_VEL_LOCAL_START_IDX = NO_JOINT_ANGULAR_VEL_END_IDX# 25
-    # NO_JOINT_TAR_TOE_VEL_LOCAL_END_IDX = NO_JOINT_TAR_TOE_VEL_LOCAL_START_IDX + TAR_TOE_VEL_LOCAL_SIZE# 25+12 = 37
+    NO_JOINT_TAR_TOE_VEL_LOCAL_START_IDX = NO_JOINT_ANGULAR_VEL_END_IDX# 25
+    NO_JOINT_TAR_TOE_VEL_LOCAL_END_IDX = NO_JOINT_TAR_TOE_VEL_LOCAL_START_IDX + TAR_TOE_VEL_LOCAL_SIZE# 25+12 = 37
 
     def __init__(
             self,
@@ -88,12 +90,13 @@ class AMPLoader:
         self.trajectory_weights = []
         self.trajectory_frame_durations = []
         self.trajectory_num_frames = []
-        # bags=glob.glob('/home/tianhu/TO/src/towr/trajectory/*.bag')
+        
+        # bags=glob.glob('/home/tianhu/AMP_for_hardware/datasets/TO_trajectory/*.bag')
         # for i, bag in enumerate(bags):
         #     bags = rosbag.Bag(str(bag))
         #     print('trajectory_name:', bag.split('.')[0])
 
-        #     TO_data, frame_duration= self.recorder_from_rosbag_to_isaac(bags)
+        #     TO_data, frame_duration= self.recorder_from_rosbag_to_isaac(bags,bag.split('.')[0])
         #     # print('Size of TO_data is :', TO_data.shape)
         #     # print('Type of TO_data is :', type(TO_data))
         #     for f_i in range(TO_data.shape[0]):
@@ -112,22 +115,22 @@ class AMPLoader:
 
         #                 # Remove first 7 observation dimensions (root_pos and root_orn).
 
-        #                 self.trajectories.append(torch.tensor(
-        #                     TO_data[
-        #                         :,
-        #                         AMPLoader.ROOT_ROT_END_IDX:AMPLoader.JOINT_VEL_END_IDX
-        #                     ], dtype=torch.float32, device=device))
-        #                 self.trajectories_full.append(torch.tensor(
-        #                         TO_data[:, :AMPLoader.JOINT_VEL_END_IDX],
-        #                         dtype=torch.float32, device=device))
         #                 # self.trajectories.append(torch.tensor(
         #                 #     TO_data[
         #                 #         :,
-        #                 #         AMPLoader.ROOT_ROT_END_IDX:AMPLoader.NO_JOINT_ANGULAR_VEL_END_IDX
+        #                 #         AMPLoader.ROOT_ROT_END_IDX:AMPLoader.JOINT_VEL_END_IDX
         #                 #     ], dtype=torch.float32, device=device))
         #                 # self.trajectories_full.append(torch.tensor(
-        #                 #         TO_data[:, :AMPLoader.NO_JOINT_ANGULAR_VEL_END_IDX],
+        #                 #         TO_data[:, :AMPLoader.JOINT_VEL_END_IDX],
         #                 #         dtype=torch.float32, device=device))
+        #                 self.trajectories.append(torch.tensor(
+        #                     TO_data[
+        #                         :,
+        #                         AMPLoader.ROOT_ROT_END_IDX:AMPLoader.NO_JOINT_ANGULAR_VEL_END_IDX
+        #                     ], dtype=torch.float32, device=device))
+        #                 self.trajectories_full.append(torch.tensor(
+        #                         TO_data[:, :AMPLoader.NO_JOINT_ANGULAR_VEL_END_IDX],
+        #                         dtype=torch.float32, device=device))
         #                 self.trajectory_idxs.append(i)
         #                 self.trajectory_frame_durations.append(frame_duration)
         #                 traj_len = (TO_data.shape[0] - 1) * frame_duration
@@ -147,10 +150,7 @@ class AMPLoader:
                 motion_json = json.load(f)
                 mc_data = np.array(motion_json["Frames"])
                 # print('motion data is:',motion_data)
-                mc_data = self.reorder_from_pybullet_to_isaac(mc_data)
-                print('Size of mc_data is :', mc_data.shape)
-                print('Type of mc_data is :', type(mc_data))
-
+                mc_data = self.reorder_from_pybullet_to_isaac(mc_data, motion_file.split('.')[0])
 
                 # Normalize and standardize quaternions.
                 for f_i in range(mc_data.shape[0]):
@@ -165,11 +165,11 @@ class AMPLoader:
                         AMPLoader.POS_SIZE:
                             (AMPLoader.POS_SIZE +
                              AMPLoader.ROT_SIZE)] = root_rot
-                    # print('Number 4, root_rot is:',root_rot)
-                    # print('motion_data is :',motion_data)
+
                     
                 
                 # Remove first 7 observation dimensions (root_pos and root_orn).
+                # -----With joint angles-----
                 self.trajectories.append(torch.tensor(
                     mc_data[
                         :,
@@ -178,6 +178,16 @@ class AMPLoader:
                 self.trajectories_full.append(torch.tensor(
                         mc_data[:, :AMPLoader.JOINT_VEL_END_IDX],
                         dtype=torch.float32, device=device))
+                # -----Without joint angles-----
+                # self.trajectories.append(torch.tensor(
+                #     mc_data[
+                #         :,
+                #         AMPLoader.ROOT_ROT_END_IDX:AMPLoader.NO_JOINT_ANGULAR_VEL_END_IDX
+                #     ], dtype=torch.float32, device=device))
+                # self.trajectories_full.append(torch.tensor(
+                #         mc_data[:, :AMPLoader.NO_JOINT_ANGULAR_VEL_END_IDX],
+                #         dtype=torch.float32, device=device))
+
                 self.trajectory_idxs.append(i)
                 self.trajectory_weights.append(
                     float(motion_json["MotionWeight"]))
@@ -208,72 +218,50 @@ class AMPLoader:
 
         self.all_trajectories_full = torch.vstack(self.trajectories_full)
 
-    def reorder_from_pybullet_to_isaac(self, motion_data):
+    def reorder_from_pybullet_to_isaac(self, motion_data, name):
         """Convert from PyBullet ordering to Isaac ordering.
 
         Rearranges leg and joint order from PyBullet [FR, FL, RR, RL] to
         IsaacGym order [FL, FR, RL, RR].
         """
         root_pos = AMPLoader.get_root_pos_batch(motion_data)
-        print('root_pos:',root_pos)
 
-        # print('In Pybullet the type of root_pos is:',type(root_pos))
-        # print('In Pybullet the size of root_pos is:',root_pos.shape)
-        # print('Pybullet root_pos is:', root_pos)
-        # print('The type of root pos is', type(root_pos))
-        # print('The size of root pos is', root_pos.shape)
         root_rot = AMPLoader.get_root_rot_batch(motion_data)
-        # print('In Pybullet the type of root_rot is:',type(root_rot))
-        # print('In Pybullet the size of root_rot is:',root_rot.shape)
-        # print('Pybullet root_rot is:', root_rot)
+
 
 
         jp_fr, jp_fl, jp_rr, jp_rl = np.split(
             AMPLoader.get_joint_pose_batch(motion_data), 4, axis=1)
-        # print('In Pybullet jp_fr is:',jp_fr)
-        # print('In Pybullet the type of jp_fr is:',type(jp_fr))
-        # print('In Pybullet the size of jp_fr is:',jp_fr.shape)
+
 
         joint_pos = np.hstack([jp_fl, jp_fr, jp_rl, jp_rr])
-        # print('In Pybullet the type of joint_pos is:',type(joint_pos))
-        # print('In Pybullet the size of joint_pos is:',joint_pos.shape)
-    
+
         fp_fr, fp_fl, fp_rr, fp_rl = np.split(
             AMPLoader.get_tar_toe_pos_local_batch(motion_data), 4, axis=1)
-        # print('fp_fr is:',fp_fr)
-        # print('In Pybullet the type of fp_fr is:',type(fp_fr))
-        # print('In Pybullet the size of fp_fr is:',fp_fr.shape)
+
         foot_pos = np.hstack([fp_fl, fp_fr, fp_rl, fp_rr])
-        # print('In Pybullet the type of foot_pos is:',type(foot_pos))
-        # print('In Pybullet the size of foot_pos is:',foot_pos.shape)
 
 
         lin_vel = AMPLoader.get_linear_vel_batch(motion_data)
-        # print('In Pybullet the type of lin_vel is:',type(lin_vel))
-        # print('In Pybullet the size of lin_vel is:',lin_vel.shape)
+
         ang_vel = AMPLoader.get_angular_vel_batch(motion_data)
-        # print('In Pybullet the type of ang_vel is:',type(ang_vel))
-        # print('In Pybullet the size of ang_vel is:',ang_vel.shape)
+
 
         jv_fr, jv_fl, jv_rr, jv_rl = np.split(
             AMPLoader.get_joint_vel_batch(motion_data), 4, axis=1)
-        # print('In Pybullet the type of jv_fr is:',type(jv_fr))
-        # print('In Pybullet the size of jv_fr is:',jv_fr.shape)
+
         joint_vel = np.hstack([jv_fl, jv_fr, jv_rl, jv_rr])
-        # print('In Pybullet the type of joint_vel is:',type(joint_vel))
-        # print('In Pybullet the size of joint_vel is:',joint_vel.shape)
 
         fv_fr, fv_fl, fv_rr, fv_rl = np.split(
             AMPLoader.get_tar_toe_vel_local_batch(motion_data), 4, axis=1)
-        # print('In Pybullet the type of fv_fr is:',type(fv_fr))
-        # print('In Pybullet the size of fv_fr is:',fv_fr.shape)
+
         foot_vel = np.hstack([fv_fl, fv_fr, fv_rl, fv_rr])
-        # print('In Pybullet the type of foot_vel is:',type(foot_vel))
-        # print('In Pybullet the size of foot_vel is:',foot_vel.shape)
-        # print('foot_pos_x:',fp_fr[0])
-        # print('foot_pos_y:',fp_fr[1])
-        # print('foot_pos_z:',fp_fr[2])
-        print('foot_pos:',fp_fr)
+
+        # self._plot(fp_fl, fp_fr, fp_rl, fp_rr, root_pos, jp_fl, jp_fr, jp_rl, jp_rr, name)
+
+        # print('jp_fl:',jp_fl[:,0])
+
+
 
         return np.hstack(
             [root_pos, root_rot, joint_pos, foot_pos, lin_vel, ang_vel,
@@ -281,7 +269,11 @@ class AMPLoader:
         # return np.hstack(
         #     [root_pos, root_rot, foot_pos, lin_vel, ang_vel,
         #      foot_vel])
-    def recorder_from_rosbag_to_isaac(self,ros_bag_data):
+
+        # return np.hstack(
+        #     [root_pos, root_rot, foot_pos, lin_vel, ang_vel,
+        #      foot_vel])
+    def recorder_from_rosbag_to_isaac(self,ros_bag_data, name):
         root_pos = []
         root_rot = []
         lin_vel =[]
@@ -296,81 +288,74 @@ class AMPLoader:
         fv_rr=[]
         jp_fr, jp_fl, jp_rr, jp_rl = [],[],[],[]
         jv_fr, jv_fl, jv_rr, jv_rl = [],[],[],[]
-        # joint_pos = []
-        # joint_vel = []
+        
+        
+        
+
         for topic, msg, t in ros_bag_data.read_messages(topics = '/xpp/state_des'):
-            # root_pos = np.array([msg.base.pose.position.x,msg.base.pose.position.y,msg.base.pose.position.z])
-            root_pos.append([msg.base.pose.position.x,msg.base.pose.position.y,msg.base.pose.position.z - 0.1])
+            root_pos.append([msg.base.pose.position.x,msg.base.pose.position.y,msg.base.pose.position.z - 0.12])
             root_rot.append([msg.base.pose.orientation.x,msg.base.pose.orientation.y,msg.base.pose.orientation.z,msg.base.pose.orientation.w]) 
             lin_vel.append([msg.base.twist.linear.x,msg.base.twist.linear.y,msg.base.twist.linear.z]) 
             ang_vel.append([msg.base.twist.angular.x,msg.base.twist.angular.y,msg.base.twist.angular.z]) 
-            FR_Hip_Trans = (0.1805, -0.0512, 0)
-            FL_Hip_Trans=(0.1805, 0.0512, 0)
-            RR_Hip_Trans =(-0.1805, -0.0512, 0)
-            RL_Hip_Trans = (-0.1805, 0.0512, 0)
-            # print('root_pos:', msg.base.pose.position.z-0.1)
+            # FR_Hip_Trans = (0.1805, -0.0512, 0)
+            # FL_Hip_Trans=(0.1805, 0.0512, 0)
+            # RR_Hip_Trans =(-0.1805, -0.0512, 0)
+            # RL_Hip_Trans = (-0.1805, 0.0512, 0)
+            FR_Hip_Trans = (0, 0, 0)
+            FL_Hip_Trans=(0, 0, 0)
+            RR_Hip_Trans =(0, 0, 0)
+            RL_Hip_Trans = (0, 0, 0)
 
 
 
             left_f_pos_x = msg.ee_motion[0].pos.x - (msg.base.pose.position.x + FL_Hip_Trans[0])
             left_f_pos_y = msg.ee_motion[0].pos.y - (msg.base.pose.position.y + FL_Hip_Trans[1])
-            left_f_pos_z = msg.ee_motion[0].pos.z - (msg.base.pose.position.z-0.1 + FL_Hip_Trans[2])
+            left_f_pos_z = msg.ee_motion[0].pos.z - (msg.base.pose.position.z-0.12 + FL_Hip_Trans[2])
             right_f_pos_x = msg.ee_motion[1].pos.x - (msg.base.pose.position.x + FR_Hip_Trans[0])
             right_f_pos_y = msg.ee_motion[1].pos.y - (msg.base.pose.position.y + FR_Hip_Trans[1])
-            right_f_pos_z = msg.ee_motion[1].pos.z - (msg.base.pose.position.z-0.1 + FR_Hip_Trans[2])
+            right_f_pos_z = msg.ee_motion[1].pos.z - (msg.base.pose.position.z-0.12 + FR_Hip_Trans[2])
             left_r_pos_x = msg.ee_motion[2].pos.x - (msg.base.pose.position.x + RL_Hip_Trans[0])
             left_r_pos_y = msg.ee_motion[2].pos.y - (msg.base.pose.position.y + RL_Hip_Trans[1])
-            left_r_pos_z = msg.ee_motion[2].pos.z - (msg.base.pose.position.z-0.1 + RL_Hip_Trans[2])
+            left_r_pos_z = msg.ee_motion[2].pos.z - (msg.base.pose.position.z-0.12 + RL_Hip_Trans[2])
             right_r_pos_x = msg.ee_motion[3].pos.x - (msg.base.pose.position.x + RR_Hip_Trans[0])
             right_r_pos_y = msg.ee_motion[3].pos.y - (msg.base.pose.position.y + RR_Hip_Trans[1])
-            right_r_pos_z = msg.ee_motion[3].pos.z - (msg.base.pose.position.z-0.1 + RR_Hip_Trans[2])
-            # print('left_f_pos_x:', left_f_pos_x)
-            # print('left_f_pos_y:', left_f_pos_y)
-            # print('left_f_pos_z:', left_f_pos_z)
+            right_r_pos_z = msg.ee_motion[3].pos.z - (msg.base.pose.position.z-0.12 + RR_Hip_Trans[2])
 
 
-            # fp_fl.append([left_f_pos_x,left_f_pos_y,left_f_pos_z])
-            # fp_fr.append([right_f_pos_x,right_f_pos_y,right_f_pos_z])
-            # fp_rl.append([left_r_pos_x,left_r_pos_y,left_r_pos_z])
-            # fp_rr.append([right_r_pos_x,right_r_pos_y,right_r_pos_z])
+
+            fp_fl.append([left_f_pos_x,left_f_pos_y,left_f_pos_z])
+            fp_fr.append([right_f_pos_x,right_f_pos_y,right_f_pos_z])
+            fp_rl.append([left_r_pos_x,left_r_pos_y,left_r_pos_z])
+            fp_rr.append([right_r_pos_x,right_r_pos_y,right_r_pos_z])
 
 
-            # print('left_f_pos_z:', msg.ee_motion[0].pos.z + 0.1)
 
-            fp_fl.append([msg.ee_motion[0].pos.x,msg.ee_motion[0].pos.y,left_f_pos_z])
-            fp_fr.append([msg.ee_motion[1].pos.x,msg.ee_motion[1].pos.y,right_f_pos_z])
-            fp_rl.append([msg.ee_motion[2].pos.x,msg.ee_motion[2].pos.y,left_r_pos_z])
-            fp_rr.append([msg.ee_motion[3].pos.x,msg.ee_motion[3].pos.y,right_r_pos_z])
+            # fp_fl.append([msg.ee_motion[0].pos.x,msg.ee_motion[0].pos.y,left_f_pos_z])
+            # fp_fr.append([msg.ee_motion[1].pos.x,msg.ee_motion[1].pos.y,right_f_pos_z])
+            # fp_rl.append([msg.ee_motion[2].pos.x,msg.ee_motion[2].pos.y,left_r_pos_z])
+            # fp_rr.append([msg.ee_motion[3].pos.x,msg.ee_motion[3].pos.y,right_r_pos_z])
 
             fv_fl.append([msg.ee_motion[0].vel.x,msg.ee_motion[0].vel.y,msg.ee_motion[0].vel.z])
             fv_fr.append([msg.ee_motion[1].vel.x,msg.ee_motion[1].vel.y,msg.ee_motion[1].vel.z])
             fv_rl.append([msg.ee_motion[2].vel.x,msg.ee_motion[2].vel.y,msg.ee_motion[2].vel.z])
             fv_rr.append([msg.ee_motion[3].vel.x,msg.ee_motion[3].vel.y,msg.ee_motion[3].vel.z])
             
-            jp_fr.append([0.0,0.0,0.0])
-            jp_fl.append([0.0,0.0,0.0])
-            jp_rr.append([0.0,0.0,0.0])
-            jp_rl.append([0.0,0.0,0.0])
-            jv_fr.append([0.0,0.0,0.0])
-            jv_fl.append([0.0,0.0,0.0])
-            jv_rr.append([0.0,0.0,0.0])
-            jv_rl.append([0.0,0.0,0.0])
+            
   
             frame_duration = float(msg.time_from_start.secs)
 
-            # fp_fr = [msg.ee_motion.pos.x,msg.ee_motion.pos.y,msg.ee_motion.pos.z]
 
-            # foot_pos = msg.ee_motion.pos
-            # joint_pos = 
-            # print(f"Topic: {topic}")
-            # print(f"Message: {msg.base}")
-            # print(f"Timestamp: {t.to_sec()}")
-            # print("-----------")
-            # print('root_pos is:',root_pos)
-            # print('root_rot is:', root_rot)
-            # print('fp_fl is:', fp_fl)
 
-            # print('foot_pos is:',foot_pos)
+        for topic, msg, t in ros_bag_data.read_messages(topics = '/xpp/joint_des'):
+            jp_fr.append([msg.joint_state.position[3],msg.joint_state.position[4],msg.joint_state.position[5]])
+            jp_fl.append([msg.joint_state.position[0],msg.joint_state.position[1],msg.joint_state.position[2]])
+            jp_rr.append([msg.joint_state.position[9],msg.joint_state.position[10],msg.joint_state.position[11]])
+            jp_rl.append([msg.joint_state.position[6],msg.joint_state.position[7],msg.joint_state.position[8]])
+            jv_fr.append([msg.joint_state.velocity[3],msg.joint_state.velocity[4],msg.joint_state.velocity[5]])
+            jv_fl.append([msg.joint_state.velocity[0],msg.joint_state.velocity[1],msg.joint_state.velocity[2]])
+            jv_rr.append([msg.joint_state.velocity[9],msg.joint_state.velocity[10],msg.joint_state.velocity[11]])
+            jv_rl.append([msg.joint_state.velocity[6],msg.joint_state.velocity[7],msg.joint_state.velocity[8]])
+
         root_pos = np.array(root_pos)
         root_rot = np.array(root_rot)
         lin_vel = np.array(lin_vel)
@@ -395,22 +380,86 @@ class AMPLoader:
         foot_vel = np.hstack([fv_fl, fv_fr, fv_rl, fv_rr])
         joint_pos = np.hstack([jp_fl, jp_fr, jp_rl, jp_rr])
         joint_vel = np.hstack([jv_fl, jv_fr, jv_rl, jv_rr])
+        # self._plot(fp_fl, fp_fr, fp_rl, fp_rr, root_pos, jp_fl, jp_fr, jp_rl, jp_rr, name)
+
         
         
         
 
 # ----------Without Joint Space Input------------------
-        # return np.hstack(
-        #     [root_pos, root_rot, foot_pos, lin_vel, ang_vel,
-        #      foot_vel]), frame_duration
+        return np.hstack(
+            [root_pos, root_rot, foot_pos, lin_vel, ang_vel,
+             foot_vel]), frame_duration
 
 # ----------With Joint Space Input------------------
-        return np.hstack(
-            [root_pos, root_rot, joint_pos, foot_pos, lin_vel, ang_vel,
-             joint_vel, foot_vel]), frame_duration
+        # return np.hstack(
+        #     [root_pos, root_rot, joint_pos, foot_pos, lin_vel, ang_vel,
+        #      joint_vel, foot_vel]), frame_duration
         
         
+    def _plot(self, lf_foot_pos, rf_foot_pos, lb_foot_pos, rb_foot_pos,  base_pos, lf_joint_angle, rf_joint_angle, lb_joint_angle, rb_joint_angle, name):
+    # def _plot(self, lf_foot_pos, rf_foot_pos, lb_foot_pos, rb_foot_pos,  base_pos, name):
+        nb_rows = 2
+        nb_cols = 3
+        # print('lf_foot_pos:',lf_foot_pos)
+        # print('lf_joint_angle:',lf_joint_angle)
+        fig, axs = plt.subplots(nb_rows, nb_cols)
+        # fig, axs = plt.subplots(1, nb_cols)
+        time = np.linspace(0, 1, len(base_pos))
+        plt.plot()
+        fig.suptitle(name)
+        a = axs[0 ,0]
+        # a = axs[0]
+        a.plot(time, lf_foot_pos[:,0], label='lf_x')
+        a.plot(time, rf_foot_pos[:,0], label='rf_x')
+        a.plot(time, lb_foot_pos[:,0], label='lb_x')
+        a.plot(time, rb_foot_pos[:,0], label='rb_x')
+        a.plot(time, base_pos[:,0], label='base_x')
+        a.set(xlabel='time [s]', ylabel='Position', title='Trajectory_x')
+        a.legend()
+        a = axs[0, 1]
+        # a = axs[1]
+        a.plot(time, lf_foot_pos[:,1], label='lf_y')
+        a.plot(time, rf_foot_pos[:,1], label='rf_y')
+        a.plot(time, lb_foot_pos[:,1], label='lb_y')
+        a.plot(time, rb_foot_pos[:,1], label='rb_y')
+        a.plot(time, base_pos[:,1], label='base_y')
+        a.set(xlabel='time [s]', ylabel='Position', title='Trajectory_y')
+        a.legend()
+        a = axs[0, 2]
+        # a = axs[2]
+        a.plot(time, lf_foot_pos[:,2], label='lf_z')
+        a.plot(time, rf_foot_pos[:,2], label='rf_z')
+        a.plot(time, lb_foot_pos[:,2], label='lb_z')
+        a.plot(time, rb_foot_pos[:,2], label='rb_z')
+        a.plot(time, base_pos[:,2], label='base_z')
+        a.set(xlabel='time [s]', ylabel='Position', title='Trajectory_z')
+        a.legend()
+        a = axs[1, 0]
+        a.plot(time, lf_joint_angle[:,0], label='lf_hip')
+        a.plot(time, rf_joint_angle[:,0], label='rf_hip')
+        a.plot(time, lb_joint_angle[:,0], label='lb_hip')
+        a.plot(time, rb_joint_angle[:,0], label='rb_hip')
+        a.set(xlabel='time [s]', ylabel='Joint angles(rads)', title='Hip joint Trajectory')
+        a.legend()
+        a = axs[1, 1]
+        a.plot(time, lf_joint_angle[:,1], label='lf_thigh')
+        a.plot(time, rf_joint_angle[:,1], label='rf_thigh')
+        a.plot(time, lb_joint_angle[:,1], label='lb_thigh')
+        a.plot(time, rb_joint_angle[:,1], label='rb_thigh')
+        a.set(xlabel='time [s]', ylabel='Joint angles(rads)', title='Thigh joint Trajectory')
+        a.legend()
+        a = axs[1, 2]
+        a.plot(time, lf_joint_angle[:,2], label='lf_calf')
+        a.plot(time, rf_joint_angle[:,2], label='rf_calf')
+        a.plot(time, lb_joint_angle[:,2], label='lb_calf')
+        a.plot(time, rb_joint_angle[:,2], label='rb_calf')
+        a.set(xlabel='time [s]', ylabel='Joint angles(rads)', title='Calf joint Trajectory')
+        a.legend()
+        # plot base vel y
+        plt.show()
 
+        
     def weighted_traj_idx_sample(self):
         """Get traj idx via weighted sampling."""
         return np.random.choice(

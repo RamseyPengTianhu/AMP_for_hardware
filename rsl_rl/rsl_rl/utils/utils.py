@@ -57,16 +57,44 @@ def split_and_pad_trajectories(tensor, dones):
     # Permute the buffers to have order (num_envs, num_transitions_per_env, ...), for correct reshaping
     flat_dones = dones.transpose(1, 0).reshape(-1, 1)
 
+
     # Get length of trajectory by counting the number of successive not done elements
     done_indices = torch.cat((flat_dones.new_tensor([-1], dtype=torch.int64), flat_dones.nonzero()[:, 0]))
+
+
     trajectory_lengths = done_indices[1:] - done_indices[:-1]
+    # print('trajectory_lengths:',trajectory_lengths)
+
+    # print('trajectory_lengths:',trajectory_lengths.size(0))
+    # desired_total_size = 2000
+    # additional_zeros = desired_total_size - trajectory_lengths.size(0)
+    # if additional_zeros > 0:
+    # # Create a tensor of zeros to append
+    #     zeros_to_append = torch.zeros(additional_zeros, dtype=torch.int64,  device=trajectory_lengths.device)
+
+    #     # Concatenate the existing trajectory lengths with the zeros
+    #     extended_trajectory_lengths = torch.cat([trajectory_lengths, zeros_to_append])
+    # else:
+    # # Handle case where no additional zeros are needed
+    #      extended_trajectory_lengths = trajectory_lengths.clone()
+
+
+
     trajectory_lengths_list = trajectory_lengths.tolist()
+    # trajectory_lengths_list = extended_trajectory_lengths.tolist()
+
     # Extract the individual trajectories
     trajectories = torch.split(tensor.transpose(1, 0).flatten(0, 1),trajectory_lengths_list)
+
+
     padded_trajectories = torch.nn.utils.rnn.pad_sequence(trajectories)
 
 
     trajectory_masks = trajectory_lengths > torch.arange(0, tensor.shape[0], device=tensor.device).unsqueeze(1)
+    # false_mask_extension = torch.zeros((24, additional_zeros), dtype=torch.bool, device=trajectory_masks.device)
+    # extended_trajectory_masks = torch.cat([trajectory_masks, false_mask_extension], dim=1)
+
+
     return padded_trajectories, trajectory_masks
 
 def unpad_trajectories(trajectories, masks):
