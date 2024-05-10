@@ -41,7 +41,8 @@ class A1AMPTSCfg( LeggedRobotCfg ):
         include_history_steps = None  # Number of steps of history to include.
         num_observations = 45
         # num_observations = 45+6
-        num_privileged_obs = 42+187
+        # num_privileged_obs = 42+187
+        num_privileged_obs = 42
         num_terrain_obs = 187
         num_observation_history = 40
         num_obs_sequence = 50
@@ -113,8 +114,8 @@ class A1AMPTSCfg( LeggedRobotCfg ):
 
     class terrain( LeggedRobotCfg.terrain ):
         mesh_type = 'plane'  # none, plane, heightfield or trimesh
-        measure_heights = False
-        measure_heights_in_sim = True
+        measure_heights = True
+        measure_heights_in_sim = False
         
 
         # ----------Teacher------
@@ -244,7 +245,7 @@ class A1AMPTSCfg( LeggedRobotCfg ):
             # feet_stumble = 0.0 
             # action_rate = 0.0
             # stand_still = 0.0
-            # dof_pos_limits = 0.0
+            dof_pos_limits = -0.1
 
         tracking_sigma = 0.25  # tracking reward = exp(-error^2/sigma)
         
@@ -261,7 +262,7 @@ class A1AMPTSCfg( LeggedRobotCfg ):
         gamepad_commands = True
 
         class ranges:
-            lin_vel_x = [-1.0, 2.0] # min max [m/s]
+            # lin_vel_x = [-1.0, 2.0] # min max [m/s]
             lin_vel_x = [0.0, 2.0] # min max [m/s]
             lin_vel_y = [-0.3, 0.3]   # min max [m/s]
             ang_vel_yaw = [-1.57, 1.57]    # min max [rad/s]
