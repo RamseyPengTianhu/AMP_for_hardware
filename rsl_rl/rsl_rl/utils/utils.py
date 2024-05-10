@@ -157,6 +157,7 @@ class Normalizer(RunningMeanStd):
         std_torch = torch.sqrt(torch.tensor(
             self.var + self.epsilon, device=device, dtype=torch.float32))
 
+
         return torch.clamp(
             (input - mean_torch) / std_torch, -self.clip_obs, self.clip_obs)
 

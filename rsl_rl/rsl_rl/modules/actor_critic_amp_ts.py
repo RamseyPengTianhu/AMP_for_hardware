@@ -125,8 +125,8 @@ class ActorCriticAmpTs(nn.Module):
         else:
             teacher_latent_dim = int(torch.tensor(privileged_encoder_latent_dims))#8 + 16 = 24
 
-
         mlp_input_dim_a = num_obs + teacher_latent_dim
+
         mlp_input_dim_c = num_obs + teacher_latent_dim
         student_latent_dim = teacher_latent_dim#24
         # mlp_input_dim_a = num_actor_obs
@@ -333,6 +333,13 @@ class ActorCriticAmpTs(nn.Module):
         else:
             teacher_latent = torch.cat((privileged_latent,),dim=-1)
         mean = self.actor(torch.cat((observations, teacher_latent), dim=-1))
+        # print('dim of mean:',mean.shape)
+        # print('dim of self.std:',self.std.shape)
+        if torch.isnan(mean).any():
+            print("Mean tensor contains NaN values.")
+        if not torch.isfinite(mean).all():
+            print("Mean tensor contains non-finite values.")
+
 
         self.distribution = Normal(mean, mean * 0. + self.std)
 

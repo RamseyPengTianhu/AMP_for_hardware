@@ -56,12 +56,22 @@ from .legged_robot_config import LeggedRobotCfg
 from rsl_rl.datasets.motion_loader import AMPLoader
 
 
-COM_OFFSET = torch.tensor([0.012731, 0.002186, 0.000515])
+# COM_OFFSET = torch.tensor([0.012731, 0.002186, 0.000515])
+# HIP_OFFSETS = torch.tensor([
+#     [0.183, 0.047, 0.],
+#     [0.183, -0.047, 0.],
+#     [-0.183, 0.047, 0.],
+#     [-0.183, -0.047, 0.]]) + COM_OFFSET
+COM_OFFSET = torch.tensor([ 0.000515, 0.002186, 0.012731])
 HIP_OFFSETS = torch.tensor([
-    [0.183, 0.047, 0.],
-    [0.183, -0.047, 0.],
-    [-0.183, 0.047, 0.],
-    [-0.183, -0.047, 0.]]) + COM_OFFSET
+    [0, 0.0512, 0.1805],
+    [0, -0.0512, 0.1805],
+    [0, 0.0512, -0.1805 ],
+    [0, -0.0512, -0.1805]]) + COM_OFFSET
+
+
+
+
 
 
 class LeggedRobot(BaseTask):
@@ -418,7 +428,27 @@ class LeggedRobot(BaseTask):
                     1.) * self.obs_scales.height_measurements
                 self.obs_buf = torch.cat((self.obs_buf, heights), dim=-1)
 
+        if self.cfg.env.num_observations == 51:
+            self.obs_buf = torch.cat(
+            (self.base_ang_vel * self.obs_scales.ang_vel,
+            self.projected_gravity, 
+            self.commands[:, :3] *
+            self.commands_scale,
+            (self.dof_pos - self.default_dof_pos) *self.obs_scales.dof_pos,
+            self.dof_vel * self.obs_scales.dof_vel,
+            self.actions            
+             ),
+            dim=-1)  # 3+3+12+12+12+3=45
+            if self.cfg.terrain.measure_heights:
+                heights = torch.clip(
+                    self.root_states[:, 2].unsqueeze(1) -
+                    self.cfg.rewards.base_height_target -
+                    self.measured_heights, -1,
+                    1.) * self.obs_scales.height_measurements
+                self.obs_buf = torch.cat((self.obs_buf, heights), dim=-1)
+
             if self.add_noise:
+                print('dim of noise_scale_vec:', self.noise_scale_vec.shape)
                 self.obs_buf += (2 * torch.rand_like(self.obs_buf) - 1) * self.noise_scale_vec
                 # if self.cfg.noise.heights_uniform_noise:
                 #     self.obs_buf += (2 * torch.rand_like(self.obs_buf) - 1
@@ -657,11 +687,19 @@ class LeggedRobot(BaseTask):
     def get_amp_observations(self):
         joint_pos = self.dof_pos
         foot_pos = self.foot_positions_in_base_frame(self.dof_pos).to(self.device)
+
         base_lin_vel = self.base_lin_vel
         base_ang_vel = self.base_ang_vel
         joint_vel = self.dof_vel
         z_pos = self.root_states[:, 2:3]
-        return torch.cat((joint_pos, foot_pos, base_lin_vel, base_ang_vel, joint_vel, z_pos), dim=-1)
+        if self.cfg.env.robot_type == 'biped':
+            return torch.cat((joint_pos[:,6:], foot_pos[:,6:], base_lin_vel, base_ang_vel, joint_vel[:,6:], z_pos), dim=-1)
+        else:
+            return torch.cat((joint_pos, foot_pos, base_lin_vel, base_ang_vel, joint_vel, z_pos), dim=-1)
+
+            
+        # return torch.cat((joint_pos, foot_pos, base_lin_vel, base_ang_vel, joint_vel, z_pos), dim=-1)
+        # return torch.cat((joint_pos[:,5:], foot_pos[:,5:], base_lin_vel, base_ang_vel, joint_vel[:,5:], z_pos), dim=-1)
         # -----------Without Joint space state------------------
         # return torch.cat((foot_pos, base_lin_vel, base_ang_vel, z_pos), dim=-1)
         # return torch.cat((foot_pos, base_lin_vel, base_ang_vel,joint_vel, z_pos), dim=-1)
@@ -1071,6 +1109,22 @@ class LeggedRobot(BaseTask):
                 noise_vec[
                     45:
                     232] = noise_scales.height_measurements * noise_level * self.obs_scales.height_measurements
+        if self.obs_buf.shape[1] == 51:
+             noise_vec[:
+                      3] =  noise_scales.ang_vel * noise_level * self.obs_scales.ang_vel
+             noise_vec[
+                3:
+                6] = noise_scales.gravity * noise_level
+             noise_vec[6:9] = 0.  # commands 
+             noise_vec[
+                9:
+                23] = noise_scales.dof_pos * noise_level * self.obs_scales.dof_pos 
+             noise_vec[23:37] = noise_scales.dof_vel * noise_level * self.obs_scales.dof_vel 
+             noise_vec[37:51] = 0.  # previous actions
+             if self.cfg.terrain.measure_heights:
+                noise_vec[
+                    51:
+                    238] = noise_scales.height_measurements * noise_level * self.obs_scales.height_measurements
 
              
         elif self.obs_buf.shape[1] == 235:
@@ -1261,6 +1315,7 @@ class LeggedRobot(BaseTask):
 
         # joint positions offsets and PD gains
         self.default_dof_pos = torch.zeros(self.num_dof, dtype=torch.float, device=self.device, requires_grad=False)
+
         for i in range(self.num_dofs):
             name = self.dof_names[i]
             angle = self.cfg.init_state.default_joint_angles[name]
@@ -1315,10 +1370,14 @@ class LeggedRobot(BaseTask):
         return torch.stack([off_x, off_y, off_z], dim=-1)
 
     def foot_positions_in_base_frame(self, foot_angles):
+        # foot_positions = torch.zeros_like(foot_angles[:,:12])
         foot_positions = torch.zeros_like(foot_angles)
+        # print(foot_positions.shape)
+        
         for i in range(4):
             foot_positions[:, i * 3:i * 3 + 3].copy_(
                 self.foot_position_in_hip_frame(foot_angles[:, i * 3: i * 3 + 3], l_hip_sign=(-1)**(i)))
+            
         foot_positions = foot_positions + HIP_OFFSETS.reshape(12,).to(self.device)
         return foot_positions
 

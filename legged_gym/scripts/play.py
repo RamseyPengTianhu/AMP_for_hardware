@@ -45,6 +45,8 @@ def play(args):
     env_cfg.env.num_envs = min(env_cfg.env.num_envs, 50)
     env_cfg.terrain.num_rows = 5
     env_cfg.terrain.num_cols = 5
+    env_cfg.terrain.terrain_length = 8
+    env_cfg.terrain.terrain_width = 8
     env_cfg.terrain.curriculum = False
     env_cfg.noise.add_noise = False
     env_cfg.domain_rand.randomize_friction = False
@@ -52,7 +54,43 @@ def play(args):
     env_cfg.domain_rand.randomize_gains = False
     env_cfg.domain_rand.randomize_base_mass = False
 
+    env_cfg.env.episode_length_s = 100
+    env_cfg.terrain.slope_treshold = 0.5  # for stair generation
+
+
+
     train_cfg.runner.amp_num_preload_transitions = 1
+
+
+    env_cfg.terrain.terrain_kwargs = [{
+        'type': 'pyramid_stairs_terrain',
+        'step_width': 0.3,
+        'step_height': -0.1,
+        'platform_size': 3.
+    }, {
+        'type': 'pyramid_stairs_terrain',
+        'step_width': 0.3,
+        'step_height': 0.1,
+        'platform_size': 3.
+    }, {
+        'type': 'pyramid_sloped_terrain',
+        'slope': 0.26
+    }, {
+        'type': 'discrete_obstacles_terrain',
+        'max_height': 0.10,
+        'min_size': 0.1,
+        'max_size': 0.5,
+        'num_rects': 200
+    }, {
+        'type': 'wave_terrain',
+        'num_waves': 4,
+        'amplitude': 0.15
+    }, {
+        'type': 'stepping_stones_terrain',
+        'stone_size': 0.1,
+        'stone_distance': 0.,
+        'max_height': 0.03
+    }]
 
     # prepare environment
     env, _ = task_registry.make_env(name=args.task, args=args, env_cfg=env_cfg)
@@ -84,7 +122,8 @@ def play(args):
 
     for i in range(10*int(env.max_episode_length)):
         # actions = policy(obs, privileged_obs, terrain_obs)
-        actions = policy(obs)
+        # actions = policy(obs)
+        actions = policy(obs,obs_history)
         # obs, _, rews, dones, infos, _, _ = env.step(actions.detach())
         # actions = policy(obs, obs_history)
         obs_dict, rewards, dones, infos, reset_env_ids, terminal_amp_states = env.step(actions)

@@ -103,19 +103,19 @@ class BaseTask():
         self.extras = {}
 
         # ----------teacher---------------------
-        # self.pos_error_his_deque = collections.deque(
-        #     maxlen=cfg.control.history_steps + 1)
-        # self.vel_his_deque = collections.deque(
-        #     maxlen=cfg.control.history_steps + 1)
-        # for i in range(cfg.control.history_steps):
-        #     self.pos_error_his_deque.append(
-        #         torch.zeros((self.num_envs, 12),
-        #                     dtype=torch.float,
-        #                     device=self.device))
-        #     self.vel_his_deque.append(
-        #         torch.zeros((self.num_envs, 12),
-        #                     dtype=torch.float,
-        #                     device=self.device))
+        self.pos_error_his_deque = collections.deque(
+            maxlen=cfg.control.history_steps + 1)
+        self.vel_his_deque = collections.deque(
+            maxlen=cfg.control.history_steps + 1)
+        for i in range(cfg.control.history_steps):
+            self.pos_error_his_deque.append(
+                torch.zeros((self.num_envs, 12),
+                            dtype=torch.float,
+                            device=self.device))
+            self.vel_his_deque.append(
+                torch.zeros((self.num_envs, 12),
+                            dtype=torch.float,
+                            device=self.device))
         # ------------------------------------------
 
 

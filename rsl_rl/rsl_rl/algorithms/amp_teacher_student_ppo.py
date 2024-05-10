@@ -285,10 +285,7 @@ class AMPTSPPO:
                 aug_lstm_obs_batch = lstm_obs_batch.detach()
                 # aug_lstm_hid_batch = lstm_hid_batch.detach()
                 # aug_lstm_masks_batch = lstm_masks_batch.detach()
-                print('aug_lstm_obs_batch.shape:',aug_lstm_obs_batch.shape)
-                print('lstm_masks_batch.shape:',lstm_masks_batch.shape)
                 # print('lstm_hid_batch.shape:',lstm_hid_batch.shape)
-                print('aug_obs_batch.shape:',aug_obs_batch.shape)
                 
 
                 # lstm_obs_np = lstm_obs_batch.cpu().detach().numpy()  # Convert to NumPy array
@@ -367,6 +364,9 @@ class AMPTSPPO:
                     self.entropy_coef * entropy_batch.mean() +
                     amp_loss + grad_pen_loss)  # Adding the amp loss and gradient penality loss
                 
+                # loss = surrogate_loss + self.value_loss_coef * value_loss - self.entropy_coef * entropy_batch.mean()
+
+                
 
                 # Gradient step
                 self.optimizer.zero_grad()
@@ -429,40 +429,40 @@ class AMPTSPPO:
                 
         
             # Student encoder gradient step
-        for epoch in range(self.num_latent_encoder_substeps):
+        # for epoch in range(self.num_latent_encoder_substeps):
             
-            hx, cx = lstm_hid_batch  # unpack the hidden states
+        #     hx, cx = lstm_hid_batch  # unpack the hidden states
             
-            out, (hx, cx) = self.actor_critic.memory.forward(aug_lstm_obs_batch, masks=lstm_masks_batch, hidden_states=(hx, cx))
+        #     out, (hx, cx) = self.actor_critic.memory.forward(aug_lstm_obs_batch, masks=lstm_masks_batch, hidden_states=(hx, cx))
             
-            latent_pred = self.actor_critic.student_latent_encoder(out)
-            if self.measure_heights_in_sim:
-                latent_pred = latent_pred.view(-1, 24)
-            else:
-                latent_pred = latent_pred.view(-1, 8)
+        #     latent_pred = self.actor_critic.student_latent_encoder(out)
+        #     if self.measure_heights_in_sim:
+        #         latent_pred = latent_pred.view(-1, 24)
+        #     else:
+        #         latent_pred = latent_pred.view(-1, 8)
                 
 
           
             
 
 
-            with torch.no_grad():
+        #     with torch.no_grad():
                 
-                if self.measure_heights_in_sim:
-                    privileged_target = self.actor_critic.privileged_factor_encoder(privileged_obs_batch[:,:42])
-                    terrain_target = self.actor_critic.terrain_factor_encoder(privileged_obs_batch[:,42:])
-                    latent_target = torch.cat((privileged_target,terrain_target),dim=-1)
-                else:
-                    privileged_target = self.actor_critic.privileged_factor_encoder(privileged_obs_batch)
-                    latent_target = torch.cat((privileged_target,),dim=-1)
+        #         if self.measure_heights_in_sim:
+        #             privileged_target = self.actor_critic.privileged_factor_encoder(privileged_obs_batch[:,:42])
+        #             terrain_target = self.actor_critic.terrain_factor_encoder(privileged_obs_batch[:,42:])
+        #             latent_target = torch.cat((privileged_target,terrain_target),dim=-1)
+        #         else:
+        #             privileged_target = self.actor_critic.privileged_factor_encoder(privileged_obs_batch)
+        #             latent_target = torch.cat((privileged_target,),dim=-1)
 
-            latent_loss = F.mse_loss(latent_pred, latent_target)
+        #     latent_loss = F.mse_loss(latent_pred, latent_target)
             
-            self.latent_optimizer.zero_grad()
-            latent_loss.backward()
-            self.latent_optimizer.step()
+        #     self.latent_optimizer.zero_grad()
+        #     latent_loss.backward()
+        #     self.latent_optimizer.step()
 
-            mean_latent_loss += latent_loss.item()
+        #     mean_latent_loss += latent_loss.item()
 # -----------------------------------------------------------------------------
 
         num_updates = self.num_learning_epochs * self.num_mini_batches

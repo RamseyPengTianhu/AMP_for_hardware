@@ -308,30 +308,30 @@ class AMPLoader:
 
 
 
-            # left_f_pos_x = msg.ee_motion[0].pos.x - (msg.base.pose.position.x + FL_Hip_Trans[0])
-            # left_f_pos_y = msg.ee_motion[0].pos.y - (msg.base.pose.position.y + FL_Hip_Trans[1])
-            # left_f_pos_z = msg.ee_motion[0].pos.z - (msg.base.pose.position.z + FL_Hip_Trans[2])
-            # right_f_pos_x = msg.ee_motion[1].pos.x - (msg.base.pose.position.x + FR_Hip_Trans[0])
-            # right_f_pos_y = msg.ee_motion[1].pos.y - (msg.base.pose.position.y + FR_Hip_Trans[1])
-            # right_f_pos_z = msg.ee_motion[1].pos.z - (msg.base.pose.position.z + FR_Hip_Trans[2])
-            # left_r_pos_x = msg.ee_motion[2].pos.x - (msg.base.pose.position.x + RL_Hip_Trans[0])
-            # left_r_pos_y = msg.ee_motion[2].pos.y - (msg.base.pose.position.y + RL_Hip_Trans[1])
-            # left_r_pos_z = msg.ee_motion[2].pos.z - (msg.base.pose.position.z + RL_Hip_Trans[2])
-            # right_r_pos_x = msg.ee_motion[3].pos.x - (msg.base.pose.position.x + RR_Hip_Trans[0])
-            # right_r_pos_y = msg.ee_motion[3].pos.y - (msg.base.pose.position.y + RR_Hip_Trans[1])
-            # right_r_pos_z = msg.ee_motion[3].pos.z - (msg.base.pose.position.z + RR_Hip_Trans[2])
-            left_r_pos_x = msg.ee_motion[0].pos.x - (msg.base.pose.position.x + RL_Hip_Trans[2])
-            left_r_pos_y = msg.ee_motion[0].pos.y - (msg.base.pose.position.y + RL_Hip_Trans[1])
-            left_r_pos_z = msg.ee_motion[0].pos.z - (msg.base.pose.position.z + RL_Hip_Trans[0])
-            right_r_pos_x = msg.ee_motion[1].pos.x - (msg.base.pose.position.x + RR_Hip_Trans[2])
-            right_r_pos_y = msg.ee_motion[1].pos.y - (msg.base.pose.position.y + RR_Hip_Trans[1])
-            right_r_pos_z = msg.ee_motion[1].pos.z - (msg.base.pose.position.z + RR_Hip_Trans[0])
-            left_f_pos_x = 0
-            left_f_pos_y = 0.838
-            left_f_pos_z = 0.1805 - 0.2828
-            right_f_pos_x = 0
-            right_f_pos_y = -0.838
-            right_f_pos_z = 0.1805 - 0.2828
+            left_f_pos_x = msg.ee_motion[0].pos.x - (msg.base.pose.position.x + FL_Hip_Trans[0])
+            left_f_pos_y = msg.ee_motion[0].pos.y - (msg.base.pose.position.y + FL_Hip_Trans[1])
+            left_f_pos_z = msg.ee_motion[0].pos.z - (msg.base.pose.position.z + FL_Hip_Trans[2])
+            right_f_pos_x = msg.ee_motion[1].pos.x - (msg.base.pose.position.x + FR_Hip_Trans[0])
+            right_f_pos_y = msg.ee_motion[1].pos.y - (msg.base.pose.position.y + FR_Hip_Trans[1])
+            right_f_pos_z = msg.ee_motion[1].pos.z - (msg.base.pose.position.z + FR_Hip_Trans[2])
+            left_r_pos_x = msg.ee_motion[2].pos.x - (msg.base.pose.position.x + RL_Hip_Trans[0])
+            left_r_pos_y = msg.ee_motion[2].pos.y - (msg.base.pose.position.y + RL_Hip_Trans[1])
+            left_r_pos_z = msg.ee_motion[2].pos.z - (msg.base.pose.position.z + RL_Hip_Trans[2])
+            right_r_pos_x = msg.ee_motion[3].pos.x - (msg.base.pose.position.x + RR_Hip_Trans[0])
+            right_r_pos_y = msg.ee_motion[3].pos.y - (msg.base.pose.position.y + RR_Hip_Trans[1])
+            right_r_pos_z = msg.ee_motion[3].pos.z - (msg.base.pose.position.z + RR_Hip_Trans[2])
+            # left_r_pos_x = msg.ee_motion[0].pos.x - (msg.base.pose.position.x + RL_Hip_Trans[2])
+            # left_r_pos_y = msg.ee_motion[0].pos.y - (msg.base.pose.position.y + RL_Hip_Trans[1])
+            # left_r_pos_z = msg.ee_motion[0].pos.z - (msg.base.pose.position.z + RL_Hip_Trans[0])
+            # right_r_pos_x = msg.ee_motion[1].pos.x - (msg.base.pose.position.x + RR_Hip_Trans[2])
+            # right_r_pos_y = msg.ee_motion[1].pos.y - (msg.base.pose.position.y + RR_Hip_Trans[1])
+            # right_r_pos_z = msg.ee_motion[1].pos.z - (msg.base.pose.position.z + RR_Hip_Trans[0])
+            # left_f_pos_x = 0
+            # left_f_pos_y = 0.838
+            # left_f_pos_z = 0.1805 - 0.2828
+            # right_f_pos_x = 0
+            # right_f_pos_y = -0.838
+            # right_f_pos_z = 0.1805 - 0.2828
 
 
 
@@ -343,14 +343,14 @@ class AMPLoader:
 
 
 
-            # fv_fl.append([msg.ee_motion[0].vel.x,msg.ee_motion[0].vel.y,msg.ee_motion[0].vel.z])
-            # fv_fr.append([msg.ee_motion[1].vel.x,msg.ee_motion[1].vel.y,msg.ee_motion[1].vel.z])
-            # fv_rl.append([msg.ee_motion[2].vel.x,msg.ee_motion[2].vel.y,msg.ee_motion[2].vel.z])
-            # fv_rr.append([msg.ee_motion[3].vel.x,msg.ee_motion[3].vel.y,msg.ee_motion[3].vel.z])
-            fv_rl.append([msg.ee_motion[0].vel.x,msg.ee_motion[0].vel.y,msg.ee_motion[0].vel.z])
-            fv_rr.append([msg.ee_motion[1].vel.x,msg.ee_motion[1].vel.y,msg.ee_motion[1].vel.z])
-            fv_fl.append([0,0,0])
-            fv_fr.append([0,0,0])
+            fv_fl.append([msg.ee_motion[0].vel.x,msg.ee_motion[0].vel.y,msg.ee_motion[0].vel.z])
+            fv_fr.append([msg.ee_motion[1].vel.x,msg.ee_motion[1].vel.y,msg.ee_motion[1].vel.z])
+            fv_rl.append([msg.ee_motion[2].vel.x,msg.ee_motion[2].vel.y,msg.ee_motion[2].vel.z])
+            fv_rr.append([msg.ee_motion[3].vel.x,msg.ee_motion[3].vel.y,msg.ee_motion[3].vel.z])
+            # fv_rl.append([msg.ee_motion[0].vel.x,msg.ee_motion[0].vel.y,msg.ee_motion[0].vel.z])
+            # fv_rr.append([msg.ee_motion[1].vel.x,msg.ee_motion[1].vel.y,msg.ee_motion[1].vel.z])
+            # fv_fl.append([0,0,0])
+            # fv_fr.append([0,0,0])
             
             
   
@@ -359,23 +359,23 @@ class AMPLoader:
 
 
         for topic, msg, t in ros_bag_data.read_messages(topics = '/xpp/joint_des'):
-            # jp_fr.append([msg.joint_state.position[3],msg.joint_state.position[4],msg.joint_state.position[5]])
-            # jp_fl.append([msg.joint_state.position[0],msg.joint_state.position[1],msg.joint_state.position[2]])
-            # jp_rr.append([msg.joint_state.position[9],msg.joint_state.position[10],msg.joint_state.position[11]])
-            # jp_rl.append([msg.joint_state.position[6],msg.joint_state.position[7],msg.joint_state.position[8]])
-            # jv_fr.append([msg.joint_state.velocity[3],msg.joint_state.velocity[4],msg.joint_state.velocity[5]])
-            # jv_fl.append([msg.joint_state.velocity[0],msg.joint_state.velocity[1],msg.joint_state.velocity[2]])
-            # jv_rr.append([msg.joint_state.velocity[9],msg.joint_state.velocity[10],msg.joint_state.velocity[11]])
-            # jv_rl.append([msg.joint_state.velocity[6],msg.joint_state.velocity[7],msg.joint_state.velocity[8]])
+            jp_fr.append([msg.joint_state.position[3],msg.joint_state.position[4],msg.joint_state.position[5]])
+            jp_fl.append([msg.joint_state.position[0],msg.joint_state.position[1],msg.joint_state.position[2]])
+            jp_rr.append([msg.joint_state.position[9],msg.joint_state.position[10],msg.joint_state.position[11]])
+            jp_rl.append([msg.joint_state.position[6],msg.joint_state.position[7],msg.joint_state.position[8]])
+            jv_fr.append([msg.joint_state.velocity[3],msg.joint_state.velocity[4],msg.joint_state.velocity[5]])
+            jv_fl.append([msg.joint_state.velocity[0],msg.joint_state.velocity[1],msg.joint_state.velocity[2]])
+            jv_rr.append([msg.joint_state.velocity[9],msg.joint_state.velocity[10],msg.joint_state.velocity[11]])
+            jv_rl.append([msg.joint_state.velocity[6],msg.joint_state.velocity[7],msg.joint_state.velocity[8]])
 
-            jp_rr.append([msg.joint_state.position[3],msg.joint_state.position[4],msg.joint_state.position[5]])
-            jp_rl.append([msg.joint_state.position[0],msg.joint_state.position[1],msg.joint_state.position[2]])
-            jp_fr.append([0,1.5*3.141592653,-3.141592653/2])
-            jp_fl.append([0,1.5*3.141592653,-3.141592653/2])
-            jv_rr.append([msg.joint_state.velocity[3],msg.joint_state.velocity[4],msg.joint_state.velocity[5]])
-            jv_rl.append([msg.joint_state.velocity[0],msg.joint_state.velocity[1],msg.joint_state.velocity[2]])
-            jv_fr.append([0,0,0])
-            jv_fl.append([0,0,0])
+            # jp_rr.append([msg.joint_state.position[3],msg.joint_state.position[4],msg.joint_state.position[5]])
+            # jp_rl.append([msg.joint_state.position[0],msg.joint_state.position[1],msg.joint_state.position[2]])
+            # jp_fr.append([0,1.5*3.141592653,-3.141592653/2])
+            # jp_fl.append([0,1.5*3.141592653,-3.141592653/2])
+            # jv_rr.append([msg.joint_state.velocity[3],msg.joint_state.velocity[4],msg.joint_state.velocity[5]])
+            # jv_rl.append([msg.joint_state.velocity[0],msg.joint_state.velocity[1],msg.joint_state.velocity[2]])
+            # jv_fr.append([0,0,0])
+            # jv_fl.append([0,0,0])
 
         root_pos = np.array(root_pos)
         root_rot = np.array(root_rot)
