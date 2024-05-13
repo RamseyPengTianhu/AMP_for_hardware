@@ -407,9 +407,10 @@ class LeggedRobot(BaseTask):
              self.dof_vel, self.contact_filt),
             dim=-1)  # 3+3+3+12+12+4=37
         
-        if self.cfg.env.num_observations == 45:
+        if self.cfg.env.num_observations == 48:
             self.obs_buf = torch.cat(
-            (self.base_ang_vel * self.obs_scales.ang_vel,
+            (self.base_lin_vel*self.obs_scales.lin_vel,#3
+            self.base_ang_vel * self.obs_scales.ang_vel,
             self.projected_gravity, 
             self.commands[:, :3] *
                  self.commands_scale,
@@ -448,7 +449,6 @@ class LeggedRobot(BaseTask):
                 self.obs_buf = torch.cat((self.obs_buf, heights), dim=-1)
 
             if self.add_noise:
-                print('dim of noise_scale_vec:', self.noise_scale_vec.shape)
                 self.obs_buf += (2 * torch.rand_like(self.obs_buf) - 1) * self.noise_scale_vec
                 # if self.cfg.noise.heights_uniform_noise:
                 #     self.obs_buf += (2 * torch.rand_like(self.obs_buf) - 1
@@ -600,8 +600,7 @@ class LeggedRobot(BaseTask):
         airtime = self.feet_air_time
         # print('self.force_positions:',self.force_positions)
         self.privileged_obs_buf = torch.cat(
-            (base_lin_vel*self.obs_scales.lin_vel,#3
-            contact_states * self.priv_obs_scales.contact_state,#4
+            (contact_states * self.priv_obs_scales.contact_state,#4
              contact_forces * self.priv_obs_scales.contact_force,#12
             #  contact_normals * self.priv_obs_scales.contact_normal,
              friction_coefficients * self.priv_obs_scales.friction,#4
@@ -1093,22 +1092,23 @@ class LeggedRobot(BaseTask):
         #     self.last_actions,
         #     self.commands[:, :3] *
         #          self.commands_scale
-        if self.obs_buf.shape[1] == 45:
+        if self.obs_buf.shape[1] == 48:
              noise_vec[:
-                      3] =  noise_scales.ang_vel * noise_level * self.obs_scales.ang_vel
+                      3] =  noise_scales.lin_vel * noise_level * self.obs_scales.lin_vel
+             noise_vec[3:
+                      6] =  noise_scales.ang_vel * noise_level * self.obs_scales.ang_vel
              noise_vec[
-                3:
-                6] = noise_scales.gravity * noise_level
-             noise_vec[6:9] = 0.  # commands 
+                6:9] = noise_scales.gravity * noise_level
+             noise_vec[9:12] = 0.  # commands 
              noise_vec[
-                9:
-                21] = noise_scales.dof_pos * noise_level * self.obs_scales.dof_pos 
-             noise_vec[21:33] = noise_scales.dof_vel * noise_level * self.obs_scales.dof_vel 
-             noise_vec[33:45] = 0.  # previous actions
+                12:
+                24] = noise_scales.dof_pos * noise_level * self.obs_scales.dof_pos 
+             noise_vec[24:36] = noise_scales.dof_vel * noise_level * self.obs_scales.dof_vel 
+             noise_vec[36:48] = 0.  # previous actions
              if self.cfg.terrain.measure_heights:
                 noise_vec[
-                    45:
-                    232] = noise_scales.height_measurements * noise_level * self.obs_scales.height_measurements
+                    48:
+                    235] = noise_scales.height_measurements * noise_level * self.obs_scales.height_measurements
         if self.obs_buf.shape[1] == 51:
              noise_vec[:
                       3] =  noise_scales.ang_vel * noise_level * self.obs_scales.ang_vel
@@ -1759,9 +1759,15 @@ class LeggedRobot(BaseTask):
         # Penalize torques
         return torch.sum(torch.square(self.torques), dim=1)
 
+    def _reward_arm_dof_pos(self):
+        # Penalize  ar, dof pos
+        return torch.sum(torch.square(self.dof_pos[:,0:6]), dim=1)
+    
     def _reward_dof_vel(self):
         # Penalize dof velocities
         return torch.sum(torch.square(self.dof_vel), dim=1)
+    
+
     
     def _reward_dof_acc(self):
         # Penalize dof accelerations
@@ -1840,3 +1846,4 @@ class LeggedRobot(BaseTask):
     def _reward_feet_contact_forces(self):
         # penalize high contact forces
         return torch.sum((torch.norm(self.contact_forces[:, self.feet_indices, :], dim=-1) -  self.cfg.rewards.max_contact_force).clip(min=0.), dim=1)
+    

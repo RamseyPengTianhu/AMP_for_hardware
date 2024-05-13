@@ -400,8 +400,8 @@ class AMPTSPPO:
             adaptation_pred = self.actor_critic.adaptation_module(obs_history_batch)
             with torch.no_grad():
                 if self.measure_heights_in_sim:
-                    privileged_target = self.actor_critic.privileged_factor_encoder(privileged_obs_batch[:,:42])
-                    terrain_target = self.actor_critic.terrain_factor_encoder(privileged_obs_batch[:,42:])
+                    privileged_target = self.actor_critic.privileged_factor_encoder(privileged_obs_batch[:,:39])
+                    terrain_target = self.actor_critic.terrain_factor_encoder(privileged_obs_batch[:,39:])
                     latent_target = torch.cat((privileged_target,terrain_target),dim=-1)
                 # residual = (adaptation_target - adaptation_pred).norm(dim=1)
 
@@ -449,8 +449,8 @@ class AMPTSPPO:
         #     with torch.no_grad():
                 
         #         if self.measure_heights_in_sim:
-        #             privileged_target = self.actor_critic.privileged_factor_encoder(privileged_obs_batch[:,:42])
-        #             terrain_target = self.actor_critic.terrain_factor_encoder(privileged_obs_batch[:,42:])
+        #             privileged_target = self.actor_critic.privileged_factor_encoder(privileged_obs_batch[:,:39])
+        #             terrain_target = self.actor_critic.terrain_factor_encoder(privileged_obs_batch[:,39:])
         #             latent_target = torch.cat((privileged_target,terrain_target),dim=-1)
         #         else:
         #             privileged_target = self.actor_critic.privileged_factor_encoder(privileged_obs_batch)

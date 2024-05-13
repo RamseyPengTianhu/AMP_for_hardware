@@ -364,6 +364,12 @@ class AMPLoader:
 
 
         i = 0
+        qdot_Foot_rl = 0
+        qdot_Foot_rr = 0
+        last_q_Foot_rr = 0
+        last_q_Foot_rl = 0
+        dt = 0.01
+        
         for topic, msg, t in ros_bag_data.read_messages(topics = '/xpp/joint_des'):
             # jp_fr.append([msg.joint_state.position[3],msg.joint_state.position[4],msg.joint_state.position[5]])
             # jp_fl.append([msg.joint_state.position[0],msg.joint_state.position[1],msg.joint_state.position[2]])
@@ -375,14 +381,21 @@ class AMPLoader:
             # jv_rl.append([msg.joint_state.velocity[6],msg.joint_state.velocity[7],msg.joint_state.velocity[8]])
             # print(fv_rr.type)
             # print(fv_rr.shape)
- 
+    
             q_Foot_rr = self.calculate_foot_joint_angle([msg.joint_state.position[3],msg.joint_state.position[4],msg.joint_state.position[5]])
             q_Foot_rl = self.calculate_foot_joint_angle([msg.joint_state.position[0],msg.joint_state.position[1],msg.joint_state.position[2]])
 
-            qdot_Foot_rr = self.calculate_foot_joint_vel([msg.joint_state.position[3],msg.joint_state.position[4],msg.joint_state.position[5],q_Foot_rr],
-                                                               fv_rr[i],1,5,0.0838,0.2,0.2,0.01)
-            qdot_Foot_rl = self.calculate_foot_joint_vel([msg.joint_state.position[0],msg.joint_state.position[1],msg.joint_state.position[2],q_Foot_rl],
-                                                               fv_rl[i],0,5,0.0838,0.2,0.2,0.01)
+            # joint_vel_rr = self.calculate_foot_joint_vel([msg.joint_state.position[3],msg.joint_state.position[4],msg.joint_state.position[5],q_Foot_rr],
+            #                                                    fv_rr[i],1,5,0.0838,0.2,0.2,0.0)
+
+            # joint_vel_rl = self.calculate_foot_joint_vel([msg.joint_state.position[0],msg.joint_state.position[1],msg.joint_state.position[2],q_Foot_rl],
+            #                                                    fv_rl[i],0,5,0.0838,0.2,0.2,0.01)
+            # if i ==0:
+            #     qdot_Foot_rl = 0
+            #     qdot_Foot_rr = 0
+            # else :
+            #     qdot_Foot_rl = (q_Foot_rl - last_q_Foot_rl)/(dt)
+            #     qdot_Foot_rr = (q_Foot_rr - last_q_Foot_rr)/(dt)
             # jp_rr.append([msg.joint_state.position[3],msg.joint_state.position[4],msg.joint_state.position[5],q_Foot_rr])
             jp_rr.append([msg.joint_state.position[3],msg.joint_state.position[4],msg.joint_state.position[5]])
 
@@ -396,7 +409,10 @@ class AMPLoader:
             jv_rl.append([msg.joint_state.velocity[0],msg.joint_state.velocity[1],msg.joint_state.velocity[2]])
             jv_fr.append([0,0,0])
             jv_fl.append([0,0,0])
-            i=i+1
+            i = i + 1
+            last_t = t
+            last_q_Foot_rl = q_Foot_rl
+            last_q_Foot_rr = q_Foot_rr
 
         root_pos = np.array(root_pos)
         root_rot = np.array(root_rot)
@@ -487,7 +503,7 @@ class AMPLoader:
         joint_vel = np.linalg.pinv(Jacobian_Matrix)*foot_vel
         qdot_Foot = joint_vel[3]
 
-        return qdot_Foot
+        return joint_vel
     
     def compute_jacobian_and_forward_kinematics(self, joint_angles, hip_id, robot_type, hip_length_, thigh_length_, calf_length_, foot_length_):
         # Constants for segment lengths

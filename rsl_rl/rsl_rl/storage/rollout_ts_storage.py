@@ -335,7 +335,6 @@ class RolloutTsStorage:
      # for RNNs only
     def lstm_mini_batch_generator(self, num_mini_batches, num_epochs=8):
 
-        print('self.observations.shape:',self.observations.shape)
         padded_obs_trajectories, trajectory_masks = split_and_pad_trajectories(self.observations, self.dones)
         padded_obs_trajectories, trajectory_masks = split_and_pad_trajectories(self.observations, self.dones)
 

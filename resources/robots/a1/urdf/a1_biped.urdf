@@ -432,13 +432,16 @@
     <origin rpy="0 0 0" xyz="0 0 -0.2"/>
     <parent link="RR_calf"/>
     <child link="RR_foot"/>
+    <axis xyz="0 1 0"/>
+    <dynamics damping="0" friction="0"/>
+    <limit effort="55" lower="0" upper="1.5" velocity="28.6"/>
   </joint>
   <link name="RR_foot">
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
         <sphere radius="0.01"/>
-        <!-- <box size="0.12 0.06 0.01"/> -->
+        <!-- <box size="0.06 0.04 0.01"/> -->
       </geometry>
       <material name="orange"/>
     </visual>
@@ -446,7 +449,7 @@
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
         <sphere radius="0.02"/>
-        <!-- <box size="0.12 0.06 0.01"/> -->
+        <!-- <box size="0.06 0.04 0.01"/> -->
 
       </geometry>
     </collision>
@@ -557,13 +560,17 @@
     <origin rpy="0 0 0" xyz="0 0 -0.2"/>
     <parent link="RL_calf"/>
     <child link="RL_foot"/>
+    <axis xyz="0 1 0"/>
+    <dynamics damping="0" friction="0"/>
+    <limit effort="55" lower="0" upper="1.5" velocity="28.6"/>
+
   </joint>
   <link name="RL_foot">
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <sphere radius="0.01"/>
-        <!-- <box size="0.12 0.06 0.01"/> -->
+        <!-- <sphere radius="0.01"/> -->
+        <box size="0.06 0.04 0.01"/>
       </geometry>
       <material name="orange"/>
     </visual>
@@ -571,7 +578,7 @@
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
         <sphere radius="0.02"/>
-        <!-- <box size="0.12 0.06 0.01"/> -->
+        <!-- <box size="0.06 0.04 0.01"/> -->
       </geometry>
     </collision>
     <inertial>

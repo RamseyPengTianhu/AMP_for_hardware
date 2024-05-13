@@ -101,7 +101,7 @@ class AMPTSOnPolicyRunner:
 
         # self.discr: AMPDiscriminator = AMPDiscriminator()
         alg_class = eval(self.cfg["algorithm_class_name"]) # PPO
-        biped_min_normalized_std = [0.05, 0.02, 0.05, 0.05, 0.02, 0.05, 0.05, 0.02, 0.05, 0.05, 0.05, 0.02, 0.05, 0.05]
+        # biped_min_normalized_std = [0.05, 0.02, 0.05, 0.05, 0.02, 0.05, 0.05, 0.02, 0.05, 0.05, 0.05, 0.02, 0.05, 0.05]
         # min_std = (
         #     torch.tensor(biped_min_normalized_std, device=self.device) *
         #     (torch.abs(self.env.dof_pos_limits[:, 1] - self.env.dof_pos_limits[:, 0])))

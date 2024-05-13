@@ -325,20 +325,15 @@ class ActorCriticAmpTs(nn.Module):
         """
 
 
-        privileged_latent = self.privileged_factor_encoder(privileged_observations[:,:42])
+        privileged_latent = self.privileged_factor_encoder(privileged_observations[:,:39])
         
         if self.measure_heights_in_sim:
-            terrain_latent = self.terrain_factor_encoder(privileged_observations[:,42:])
+            terrain_latent = self.terrain_factor_encoder(privileged_observations[:,39:])
             teacher_latent = torch.cat((privileged_latent,terrain_latent),dim=-1)
         else:
             teacher_latent = torch.cat((privileged_latent,),dim=-1)
         mean = self.actor(torch.cat((observations, teacher_latent), dim=-1))
-        # print('dim of mean:',mean.shape)
-        # print('dim of self.std:',self.std.shape)
-        if torch.isnan(mean).any():
-            print("Mean tensor contains NaN values.")
-        if not torch.isfinite(mean).all():
-            print("Mean tensor contains non-finite values.")
+
 
 
         self.distribution = Normal(mean, mean * 0. + self.std)
@@ -383,8 +378,8 @@ class ActorCriticAmpTs(nn.Module):
             Tensor: The expert actions.
         """
         if self.measure_heights_in_sim:
-            privileged_latent = self.privileged_factor_encoder(privileged_observations[:,42:])
-            terrain_latent = self.terrain_factor_encoder(privileged_observations[:,:42])
+            privileged_latent = self.privileged_factor_encoder(privileged_observations[:,39:])
+            terrain_latent = self.terrain_factor_encoder(privileged_observations[:,:39])
             teacher_latent = torch.cat((privileged_latent,terrain_latent),dim=-1)
         else:
             privileged_latent = self.privileged_factor_encoder(privileged_observations)
@@ -453,9 +448,9 @@ class ActorCriticAmpTs(nn.Module):
             Tensor: The value estimates.
         """
         
-        privileged_latent = self.privileged_factor_encoder(privileged_observations[:,:42])
+        privileged_latent = self.privileged_factor_encoder(privileged_observations[:,:39])
         if self.measure_heights_in_sim:
-            terrain_latent = self.terrain_factor_encoder(privileged_observations[:,42:])
+            terrain_latent = self.terrain_factor_encoder(privileged_observations[:,39:])
             teacher_latent = torch.cat((privileged_latent,terrain_latent),dim=-1)
         else:
             teacher_latent = torch.cat((privileged_latent,),dim=-1)
