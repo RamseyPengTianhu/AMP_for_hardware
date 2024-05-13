@@ -910,7 +910,6 @@ class LeggedRobot(BaseTask):
             env_ids (List[int]): Environemnt ids
         """
         self.dof_pos[env_ids] = self.default_dof_pos * torch_rand_float(0.5, 1.5, (len(env_ids), self.num_dof), device=self.device)
-        # print("!!!!!!!!!!!!!!!!", self.dof_pos[env_ids].shape)
         self.dof_vel[env_ids] = 0.
 
         env_ids_int32 = env_ids.to(dtype=torch.int32)
@@ -968,6 +967,11 @@ class LeggedRobot(BaseTask):
         # base position
         root_pos = AMPLoader.get_root_pos_batch(frames)
         root_pos[:, :2] = root_pos[:, :2] + self.env_origins[env_ids, :2]
+        print('self.env_origins[env_ids, :2]:',self.env_origins[env_ids, :2])
+        for i in range(len(root_pos[:,2])):
+            root_pos[i, 2] +=0.5;
+
+        
         self.root_states[env_ids, :3] = root_pos
         root_orn = AMPLoader.get_root_rot_batch(frames)
         self.root_states[env_ids, 3:7] = root_orn
@@ -1561,7 +1565,9 @@ class LeggedRobot(BaseTask):
             env_handle = self.gym.create_env(self.sim, env_lower, env_upper, int(np.sqrt(self.num_envs)))
             pos = self.env_origins[i].clone()
             pos[:2] += torch_rand_float(-1., 1., (2,1), device=self.device).squeeze(1)
+            pos[2] = self.base_init_state[2]
             start_pose.p = gymapi.Vec3(*pos)
+
                 
             rigid_shape_props = self._process_rigid_shape_props(rigid_shape_props_asset, i)
             self.gym.set_asset_rigid_shape_properties(robot_asset, rigid_shape_props)
@@ -1634,6 +1640,7 @@ class LeggedRobot(BaseTask):
                     self.terrain.env_origins).to(self.device).to(torch.float)
                 self.env_origins[:] = self.terrain_origins[self.terrain_levels,
                                                            self.terrain_types]
+                print('self.env_origins[:]:',self.env_origins[:,2])
         else:
             self.custom_origins = False
             self.env_origins = torch.zeros(self.num_envs, 3, device=self.device, requires_grad=False)

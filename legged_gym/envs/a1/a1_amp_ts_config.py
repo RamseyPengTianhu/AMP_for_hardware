@@ -112,7 +112,7 @@ class A1AMPTSCfg( LeggedRobotCfg ):
 
 
     class terrain( LeggedRobotCfg.terrain ):
-        mesh_type = 'plane'  # none, plane, heightfield or trimesh
+        mesh_type = 'trimesh'  # none, plane, heightfield or trimesh
         measure_heights = False
         measure_heights_in_sim = True
         
