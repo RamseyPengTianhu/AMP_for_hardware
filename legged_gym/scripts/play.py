@@ -1,4 +1,3 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: BSD-3-Clause
 # 
 # Redistribution and use in source and binary forms, with or without
@@ -33,7 +32,7 @@ import os
 
 import isaacgym
 from legged_gym.envs import *
-from legged_gym.utils import  get_args, export_policy_as_jit, task_registry, Logger
+from legged_gym.utils import get_args, export_policy_as_jit, task_registry, Logger
 
 import numpy as np
 import torch
@@ -57,10 +56,7 @@ def play(args):
     env_cfg.env.episode_length_s = 100
     env_cfg.terrain.slope_treshold = 0.5  # for stair generation
 
-
-
     train_cfg.runner.amp_num_preload_transitions = 1
-
 
     env_cfg.terrain.terrain_kwargs = [{
         'type': 'pyramid_stairs_terrain',
@@ -94,10 +90,10 @@ def play(args):
 
     # prepare environment
     env, _ = task_registry.make_env(name=args.task, args=args, env_cfg=env_cfg)
-    _,_, _ = env.reset()
+    _, _, _ = env.reset()
     obs_dict = env.get_observations()
     terrain_obs = env.get_terrain_observations()
-    obs, privileged_obs, obs_history = obs_dict["obs"], obs_dict["privileged_obs"],  obs_dict["obs_history"]
+    obs, privileged_obs, obs_history = obs_dict["obs"], obs_dict["privileged_obs"], obs_dict["obs_history"]
 
     # load policy
     train_cfg.runner.resume = True
@@ -111,19 +107,26 @@ def play(args):
         print('Exported policy as jit script to: ', path)
 
     logger = Logger(env.dt)
-    robot_index = 0 # which robot is used for logging
-    joint_index = 1 # which joint is used for logging
-    stop_state_log = 100 # number of steps before plotting states
-    stop_rew_log = env.max_episode_length + 1 # number of steps before print average episode rewards
+    robot_index = 0  # which robot is used for logging
+    joint_index = 1  # which joint is used for logging
+    stop_state_log = 100  # number of steps before plotting states
+    stop_rew_log = env.max_episode_length + 1  # number of steps before print average episode rewards
     camera_position = np.array(env_cfg.viewer.pos, dtype=np.float64)
     camera_vel = np.array([1., 1., 0.])
     camera_direction = np.array(env_cfg.viewer.lookat) - np.array(env_cfg.viewer.pos)
     img_idx = 0
 
-    for i in range(10*int(env.max_episode_length)):
+    # Initialize variables for cost of transport calculation
+    total_power = 0
+    velocity_data = []
+    mass = 12  # kg
+    gravity = 9.81  # m/s^2
+    time_step = env.dt
+
+    for i in range(10 * int(env.max_episode_length)):
         # actions = policy(obs, privileged_obs, terrain_obs)
         # actions = policy(obs)
-        actions = policy(obs,obs_history)
+        actions = policy(obs, obs_history)
         # obs, _, rews, dones, infos, _, _ = env.step(actions.detach())
         # actions = policy(obs, obs_history)
         obs_dict, rewards, dones, infos, reset_env_ids, terminal_amp_states = env.step(actions)
@@ -132,12 +135,19 @@ def play(args):
             if i % 2:
                 filename = os.path.join(LEGGED_GYM_ROOT_DIR, 'logs', train_cfg.runner.experiment_name, 'exported', 'frames', f"{img_idx}.png")
                 env.gym.write_viewer_image_to_file(env.viewer, filename)
-                img_idx += 1 
+                img_idx += 1
         if MOVE_CAMERA:
             camera_position += camera_vel * env.dt
             env.set_camera(camera_position, camera_position + camera_direction)
 
         if i < stop_state_log:
+            # Calculate power consumption for each motor and accumulate it
+            power = sum(env.torques[robot_index, joint_index].item() * abs(env.dof_vel[robot_index, joint_index].item()) for joint_index in range(env.num_dof))
+            total_power += power * time_step  # Accumulate total power over time
+
+            # Collect velocity data
+            velocity_data.append(env.base_lin_vel[robot_index, 0].item())
+
             logger.log_states(
                 {
                     'dof_pos_target': actions[robot_index, joint_index].item() * env.cfg.control.action_scale,
@@ -154,14 +164,24 @@ def play(args):
                     'contact_forces_z': env.contact_forces[robot_index, env.feet_indices, 2].cpu().numpy()
                 }
             )
-        elif i==stop_state_log:
+        elif i == stop_state_log:
             logger.plot_states()
-        if  0 < i < stop_rew_log:
+            
+            # Calculate and print Cost of Transport (CoT) after logging states
+            average_velocity = np.mean(velocity_data)
+            print('average_velocity:',average_velocity)
+            average_power = total_power / (stop_state_log * time_step)
+            print('average_power:',average_power)
+
+            CoT = average_power / (mass * gravity * average_velocity)
+            print(f"Cost of Transport (CoT): {CoT}")
+
+        if 0 < i < stop_rew_log:
             if infos["episode"]:
                 num_episodes = torch.sum(env.reset_buf).item()
-                if num_episodes>0:
+                if num_episodes > 0:
                     logger.log_rewards(infos["episode"], num_episodes)
-        elif i==stop_rew_log:
+        elif i == stop_rew_log:
             logger.print_rewards()
 
 if __name__ == '__main__':

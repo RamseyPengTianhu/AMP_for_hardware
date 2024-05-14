@@ -112,7 +112,7 @@ class A1AMPTSCfg( LeggedRobotCfg ):
 
 
     class terrain( LeggedRobotCfg.terrain ):
-        mesh_type = 'trimesh'  # none, plane, heightfield or trimesh
+        mesh_type = 'plane'  # none, plane, heightfield or trimesh
         measure_heights = False
         measure_heights_in_sim = True
         
@@ -270,6 +270,7 @@ class A1AMPTSCfg( LeggedRobotCfg ):
 
 class A1AMPTSCfgPPO( LeggedRobotCfgPPO ):
     runner_class_name = 'AMPTSOnPolicyRunner'
+    # runner_class_name = 'AMPOnPolicyRunner'
 
     class policy:
         init_noise_std = 1.0
@@ -290,7 +291,9 @@ class A1AMPTSCfgPPO( LeggedRobotCfgPPO ):
         run_name = ''
         experiment_name = 'a1_amp_example'
         algorithm_class_name = 'AMPTSPPO'
+        # algorithm_class_name = 'AMPPPO'
         policy_class_name = 'ActorCriticAmpTs'
+        # policy_class_name = 'ActorCritic'
         max_iterations = 30000 # number of policy updates
         # max_iterations = 3000 # number of policy updates
        

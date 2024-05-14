@@ -162,6 +162,10 @@ class TaskRegistry():
                                     train_cfg_dict,
                                     log_dir,
                                     device=args.rl_device)
+        # runner = AMPOnPolicyRunner(env,
+        #                             train_cfg_dict,
+        #                             log_dir,
+        #                             device=args.rl_device)
         #save resume path before creating a new log_dir
         resume = train_cfg.runner.resume
         if resume:
