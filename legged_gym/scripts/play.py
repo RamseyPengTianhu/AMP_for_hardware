@@ -1,31 +1,4 @@
-# SPDX-License-Identifier: BSD-3-Clause
-# 
-# Redistribution and use in source and binary forms, with or without
-# modification, are permitted provided that the following conditions are met:
-#
-# 1. Redistributions of source code must retain the above copyright notice, this
-# list of conditions and the following disclaimer.
-#
-# 2. Redistributions in binary form must reproduce the above copyright notice,
-# this list of conditions and the following disclaimer in the documentation
-# and/or other materials provided with the distribution.
-#
-# 3. Neither the name of the copyright holder nor the names of its
-# contributors may be used to endorse or promote products derived from
-# this software without specific prior written permission.
-#
-# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
-# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
-# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
-# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
-# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
-# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-#
-# Copyright (c) 2021 ETH Zurich, Nikita Rudin
+
 
 from legged_gym import LEGGED_GYM_ROOT_DIR
 import os
@@ -41,9 +14,9 @@ import torch
 def play(args):
     env_cfg, train_cfg = task_registry.get_cfgs(name=args.task)
     # override some parameters for testing
-    env_cfg.env.num_envs = min(env_cfg.env.num_envs, 50)
-    env_cfg.terrain.num_rows = 5
-    env_cfg.terrain.num_cols = 5
+    env_cfg.env.num_envs = min(env_cfg.env.num_envs, 20)
+    env_cfg.terrain.num_rows = 4
+    env_cfg.terrain.num_cols = 4
     env_cfg.terrain.terrain_length = 8
     env_cfg.terrain.terrain_width = 8
     env_cfg.terrain.curriculum = False
@@ -123,6 +96,10 @@ def play(args):
     gravity = 9.81  # m/s^2
     time_step = env.dt
 
+    # Initialize success tracking
+    num_successful_episodes = 0
+    num_total_episodes = 0
+
     for i in range(10 * int(env.max_episode_length)):
         # actions = policy(obs, privileged_obs, terrain_obs)
         # actions = policy(obs)
@@ -179,10 +156,19 @@ def play(args):
         if 0 < i < stop_rew_log:
             if infos["episode"]:
                 num_episodes = torch.sum(env.reset_buf).item()
+                num_total_episodes += num_episodes
+                num_successful_episodes += num_episodes - torch.sum(dones).item()
                 if num_episodes > 0:
                     logger.log_rewards(infos["episode"], num_episodes)
         elif i == stop_rew_log:
             logger.print_rewards()
+
+        # Calculate and print success rate
+    if num_total_episodes > 0:
+        success_rate = num_successful_episodes / num_total_episodes
+        print(f"Success Rate: {success_rate * 100:.2f}%")
+    else:
+        print("No episodes were completed during the evaluation period.")
 
 if __name__ == '__main__':
     EXPORT_POLICY = True

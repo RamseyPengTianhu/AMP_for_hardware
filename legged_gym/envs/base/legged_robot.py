@@ -966,7 +966,8 @@ class LeggedRobot(BaseTask):
         """
         # base position
         root_pos = AMPLoader.get_root_pos_batch(frames)
-        root_pos[:, :2] = root_pos[:, :2] + self.env_origins[env_ids, :2]
+        root_pos[:, :3] = root_pos[:, :3] + self.env_origins[env_ids, :3]
+        
 
         
         self.root_states[env_ids, :3] = root_pos
@@ -1562,8 +1563,11 @@ class LeggedRobot(BaseTask):
             env_handle = self.gym.create_env(self.sim, env_lower, env_upper, int(np.sqrt(self.num_envs)))
             pos = self.env_origins[i].clone()
             pos[:2] += torch_rand_float(-1., 1., (2,1), device=self.device).squeeze(1)
-            pos[2] = self.base_init_state[2]
             start_pose.p = gymapi.Vec3(*pos)
+
+
+
+            
 
                 
             rigid_shape_props = self._process_rigid_shape_props(rigid_shape_props_asset, i)
@@ -1603,40 +1607,33 @@ class LeggedRobot(BaseTask):
 
     def _get_env_origins(self):
         """ Sets environment origins. On rough terrain the origins are defined by the terrain platforms.
-            Otherwise create a grid.
-        """
+        Otherwise create a grid.
+    """
         if self.cfg.terrain.mesh_type in ["heightfield", "trimesh"]:
             self.custom_origins = True
             self.env_origins = torch.zeros(self.num_envs, 3, device=self.device, requires_grad=False)
-            # put robots at the origins defined by the terrain
-            if self.cfg.terrain.evaluation_mode is True:
-                self.terrain_levels = torch.zeros(
-                    (self.num_envs, ), device=self.device).to(torch.long)
+            # middle_row = self.cfg.num_rows // 2
+            if self.cfg.terrain.evaluation_mode:
+                self.terrain_levels = torch.zeros((self.num_envs,), device=self.device).to(torch.long)
                 self.terrain_types = torch.div(
                     torch.arange(self.num_envs, device=self.device),
                     (self.num_envs / self.cfg.terrain.num_cols),
                     rounding_mode='floor').to(torch.long)
-                self.terrain_origins = torch.from_numpy(
-                    self.terrain.env_origins).to(self.device).to(torch.float)
-                self.env_origins[:] = self.terrain_origins[self.terrain_levels,
-                                                           self.terrain_types]
+                self.terrain_origins = torch.from_numpy(self.terrain.env_origins).to(self.device).to(torch.float)
+                self.env_origins[:] = self.terrain_origins[self.terrain_levels, self.terrain_types]
             else:
                 max_init_level = self.cfg.terrain.max_init_terrain_level
-                if not self.cfg.terrain.curriculum:
-                    max_init_level = self.cfg.terrain.num_rows - 1
-                self.terrain_levels = torch.randint(0,
-                                                    max_init_level + 1,
-                                                    (self.num_envs, ),
-                                                    device=self.device)
-                self.terrain_types = torch.div(
-                    torch.arange(self.num_envs, device=self.device),
-                    (self.num_envs / self.cfg.terrain.num_cols),
-                    rounding_mode='floor').to(torch.long)
-                self.max_terrain_level = self.cfg.terrain.num_rows
-                self.terrain_origins = torch.from_numpy(
-                    self.terrain.env_origins).to(self.device).to(torch.float)
-                self.env_origins[:] = self.terrain_origins[self.terrain_levels,
-                                                           self.terrain_types]
+            if not self.cfg.terrain.curriculum:
+                max_init_level = self.cfg.terrain.num_rows - 1
+            self.terrain_levels = torch.randint(0, max_init_level + 1, (self.num_envs,), device=self.device)
+            self.terrain_types = torch.div(
+                torch.arange(self.num_envs, device=self.device),
+                (self.num_envs / self.cfg.terrain.num_cols),
+                rounding_mode='floor').to(torch.long)
+            self.max_terrain_level = self.cfg.terrain.num_rows
+            self.terrain_origins = torch.from_numpy(self.terrain.env_origins).to(self.device).to(torch.float)
+            self.env_origins[:] = self.terrain_origins[self.terrain_levels,
+                                                       self.terrain_types]
         else:
             self.custom_origins = False
             self.env_origins = torch.zeros(self.num_envs, 3, device=self.device, requires_grad=False)
@@ -1648,6 +1645,7 @@ class LeggedRobot(BaseTask):
             self.env_origins[:, 0] = spacing * xx.flatten()[:self.num_envs]
             self.env_origins[:, 1] = spacing * yy.flatten()[:self.num_envs]
             self.env_origins[:, 2] = 0.
+
 
     def _parse_cfg(self, cfg):
         self.dt = self.cfg.control.decimation * self.sim_params.dt

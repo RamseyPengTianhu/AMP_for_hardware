@@ -112,7 +112,7 @@ class A1AMPTSCfg( LeggedRobotCfg ):
 
 
     class terrain( LeggedRobotCfg.terrain ):
-        mesh_type = 'plane'  # none, plane, heightfield or trimesh
+        mesh_type = 'trimesh'  # none, plane, heightfield or trimesh
         measure_heights = False
         measure_heights_in_sim = True
         
@@ -123,6 +123,8 @@ class A1AMPTSCfg( LeggedRobotCfg ):
         terrain_proportions = [0.15, 0.15, 0.15, 0.0, 0.2, 0.2, 0.15]
         dummy_normal = False
         random_reset = True
+        terrain_length = 8.
+        terrain_width = 8.
 
         # measure_heights = True
         # -------------------------
@@ -139,6 +141,9 @@ class A1AMPTSCfg( LeggedRobotCfg ):
         # terminate_after_contacts_on = [
         #     "base", "FL_calf", "FR_calf", "RL_calf", "RR_calf",
         #     "FL_thigh", "FR_thigh", "RL_thigh", "RR_thigh"]
+        terminate_after_contacts_on = [
+            "base", "FL_calf", "FR_calf", "RL_calf", "RR_calf","FL_hip", "FR_hip", "RL_hip", "RR_hip",
+            "FL_thigh", "FR_thigh", "RL_thigh", "RR_thigh","FL_foot","FR_foot"]
         terminate_after_contacts_on = [
             "base", "FL_calf", "FR_calf", "RL_calf", "RR_calf","FL_hip", "FR_hip", "RL_hip", "RR_hip",
             "FL_thigh", "FR_thigh", "RL_thigh", "RR_thigh","FL_foot","FR_foot"]
@@ -251,8 +256,8 @@ class A1AMPTSCfg( LeggedRobotCfg ):
         
 
     class commands:
-        # curriculum = True
-        curriculum = False
+        curriculum = True
+        # curriculum = False
         max_curriculum = 1.
         num_commands = 4 # default: lin_vel_x, lin_vel_y, ang_vel_yaw, heading (in heading mode ang_vel_yaw is recomputed from heading error)
         resampling_time = 10. # time before command are changed[s]
@@ -264,8 +269,8 @@ class A1AMPTSCfg( LeggedRobotCfg ):
         class ranges:
             # lin_vel_x = [-1.0, 2.0] # min max [m/s]
             lin_vel_x = [0.01, 2.0] # min max [m/s]
-            lin_vel_y = [-0.2, 0.2]   # min max [m/s]
-            ang_vel_yaw = [-0.7, 0.7]    # min max [rad/s]
+            lin_vel_y = [-0.1, 0.1]   # min max [m/s]
+            ang_vel_yaw = [-0.5, 0.5]    # min max [rad/s]
             heading = [-3.14, 3.14]
 
 class A1AMPTSCfgPPO( LeggedRobotCfgPPO ):

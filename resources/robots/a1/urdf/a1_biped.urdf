@@ -569,8 +569,8 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <!-- <sphere radius="0.01"/> -->
-        <box size="0.06 0.04 0.01"/>
+        <sphere radius="0.01"/>
+        <!-- <box size="0.06 0.04 0.01"/> -->
       </geometry>
       <material name="orange"/>
     </visual>
