@@ -67,11 +67,11 @@ class Terrain:
 
         self.height_field_raw = np.zeros((self.tot_rows, self.tot_cols), dtype=np.int16)
         # self.terrain_types_order = [
-        #     "plane", "uniform_terrain", "wave_terrain","plane" "stepping_stones_terrain", 
+        #     "plane", "uniform_terrain", "wave_terrain", "stepping_stones_terrain", 
         #     "pyramid_sloped_terrain", "pyramid_stairs_terrain", "discrete_obstacles_terrain"
         # ]
         self.terrain_types_order = [
-            "plane"
+            "uniform_terrain"
         ]
         self.curiculum()
 
@@ -114,7 +114,15 @@ class Terrain:
         for i in range(self.cfg.num_rows):
             terrain_type = self.terrain_types_order[i % terrain_type_count]
             for j in range(self.cfg.num_cols):
-                difficulty = j / self.cfg.num_cols
+                difficulty =  (j)/ self.cfg.num_cols
+                # if j <=2:
+                #     difficulty =  j/ self.cfg.num_cols
+                # else:
+                #     # difficulty =  2/ self.cfg.num_cols
+                #     difficulty =  3/ self.cfg.num_cols
+
+
+                
                 terrain = self.make_terrain(terrain_type, difficulty)
                 self.add_terrain_to_map(terrain, i, j)
                 terrain_idx += 1

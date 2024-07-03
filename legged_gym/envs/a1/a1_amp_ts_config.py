@@ -37,7 +37,7 @@ MOTION_FILES = glob.glob('datasets/mocap_motions/*')
 class A1AMPTSCfg( LeggedRobotCfg ):
 
     class env( LeggedRobotCfg.env ):
-        num_envs = 500
+        num_envs = 750
         include_history_steps = None  # Number of steps of history to include.
         num_observations = 48
         # num_observations = 45+6
@@ -45,6 +45,7 @@ class A1AMPTSCfg( LeggedRobotCfg ):
         num_terrain_obs = 187
         num_observation_history = 45
         num_obs_sequence = 50
+        context_window = 16
         reference_state_initialization = True
         reference_state_initialization_prob = 0.85
         amp_motion_files = MOTION_FILES
@@ -106,7 +107,7 @@ class A1AMPTSCfg( LeggedRobotCfg ):
         # action scale: target angle = actionScale * action + defaultAngle
         action_scale = 0.25
         # decimation: Number of control action updates @ sim DT per policy DT
-        decimation = 6
+        decimation = 4
 
         history_steps = 2
 
@@ -141,9 +142,9 @@ class A1AMPTSCfg( LeggedRobotCfg ):
         # terminate_after_contacts_on = [
         #     "base", "FL_calf", "FR_calf", "RL_calf", "RR_calf",
         #     "FL_thigh", "FR_thigh", "RL_thigh", "RR_thigh"]
-        terminate_after_contacts_on = [
-            "base", "FL_calf", "FR_calf", "RL_calf", "RR_calf","FL_hip", "FR_hip", "RL_hip", "RR_hip",
-            "FL_thigh", "FR_thigh", "RL_thigh", "RR_thigh","FL_foot","FR_foot"]
+        # terminate_after_contacts_on = [
+        #     "base", "FL_calf", "FR_calf", "RL_calf", "RR_calf","FL_hip", "FR_hip", "RL_hip", "RR_hip",
+        #     "FL_thigh", "FR_thigh", "RL_thigh", "RR_thigh","FL_foot","FR_foot"]
         terminate_after_contacts_on = [
             "base", "FL_calf", "FR_calf", "RL_calf", "RR_calf","FL_hip", "FR_hip", "RL_hip", "RR_hip",
             "FL_thigh", "FR_thigh", "RL_thigh", "RR_thigh","FL_foot","FR_foot"]
@@ -230,7 +231,7 @@ class A1AMPTSCfg( LeggedRobotCfg ):
             # action_rate = 0.0
             # action_rate = -0.01
             stand_still = 0.0
-            dof_pos_limits = -0.1
+            dof_pos_limits = -1.0
             # vel_smoothness = -0.1
             target_smoothness = -0.01
             arm_dof_pos = -2.5e-5
@@ -268,10 +269,12 @@ class A1AMPTSCfg( LeggedRobotCfg ):
 
         class ranges:
             # lin_vel_x = [-1.0, 2.0] # min max [m/s]
-            lin_vel_x = [0.01, 2.0] # min max [m/s]
-            lin_vel_y = [-0.1, 0.1]   # min max [m/s]
-            ang_vel_yaw = [-0.5, 0.5]    # min max [rad/s]
+            lin_vel_x = [1.0,1.0] # min max [m/s]
+            # lin_vel_y = [-0.01, 0.01]   # min max [m/s]
+            lin_vel_y = [0, 0]   # min max [m/s]
+            ang_vel_yaw = [0.0,0.0]    # min max [rad/s]
             heading = [-3.14, 3.14]
+            # heading = [0.0, 0.0]
 
 class A1AMPTSCfgPPO( LeggedRobotCfgPPO ):
     runner_class_name = 'AMPTSOnPolicyRunner'
@@ -299,7 +302,7 @@ class A1AMPTSCfgPPO( LeggedRobotCfgPPO ):
         # algorithm_class_name = 'AMPPPO'
         policy_class_name = 'ActorCriticAmpTs'
         # policy_class_name = 'ActorCritic'
-        max_iterations = 30000 # number of policy updates
+        max_iterations = 50000 # number of policy updates
         # max_iterations = 3000 # number of policy updates
        
         resume = False

@@ -61,15 +61,20 @@ class HistoryWrapper(gym.Wrapper):
 
         self.obs_history_length = self.env.cfg.env.num_observation_history
         self.num_obs_sequence = self.env.cfg.env.num_obs_sequence
+        self.context_window = self.env.cfg.env.context_window
 
         self.num_obs_history = self.obs_history_length * self.num_obs
+        self.num_obs_act_history = self.context_window * (self.num_obs + self.num_actions)
+        self.num_action = self.num_actions
         self.obs_history = torch.zeros(self.env.num_envs,
                                        self.num_obs_history,
                                        dtype=torch.float,
                                        device=self.env.device,
                                        requires_grad=False)
+        
         self.num_privileged_obs = self.num_privileged_obs
         self.measure_heights_in_sim = self.env.cfg.terrain.measure_heights_in_sim
+
 
     def step(self, action):
         """
@@ -103,6 +108,7 @@ class HistoryWrapper(gym.Wrapper):
 
 
         self.obs_history = torch.cat((self.obs_history[:, self.env.num_obs:], obs), dim=-1)
+    
         return {'obs': obs, 'privileged_obs': privileged_obs, 'obs_history': self.obs_history}
     
     

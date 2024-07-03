@@ -62,134 +62,144 @@ class Logger:
         self.plot_process = Process(target=self._plot)
         self.plot_process.start()
 
+
+
     def _plot(self):
-        nb_rows = 1
-        nb_cols = 3
-
-        # Adjusted figsize for each set of subplots
-        fig1, axs1 = plt.subplots(nb_rows, nb_cols, figsize=(18, 6))
-        fig2, axs2 = plt.subplots(nb_rows, nb_cols, figsize=(18, 6))
-        fig3, axs3 = plt.subplots(nb_rows, nb_cols, figsize=(18, 6))
-
         for key, value in self.state_log.items():
             time = np.linspace(0, len(value) * self.dt, len(value))
             break
 
         log = self.state_log
 
-        # Calculate cost of transport
-        if "dof_torque" in log and "base_vel_x" in log:
-            power = np.array(log["dof_torque"]) * np.array(log["dof_vel"])
-            energy = np.cumsum(power) * self.dt  # Integrate power to get energy
-            velocity = np.array(log["base_vel_x"])
-            distance = np.cumsum(velocity) * self.dt  # Integrate velocity to get distance
-            cost_of_transport = energy / distance
-
-        font_properties = {'fontsize': 'large', 'fontweight': 'bold'}
+        font_properties = {'fontsize': 24, 'fontweight': 'bold'}  # Increase font size for axis labels
+        legend_properties = {'weight': 'bold', 'size': 12}  # Increase font size for legend
 
         # Plot joint targets and measured positions
-        a = axs2[0]
-        if "dof_pos" in log:
-            a.plot(time, log["dof_pos"], label='measured')
-        if "dof_pos_target" in log:
-            a.plot(time, log["dof_pos_target"], label='target')
-        a.set_xlabel('Time [s]', **font_properties)
-        a.set_ylabel('Position [rad]', **font_properties)
-        a.legend(fontsize='large', loc='best', prop={'weight': 'bold'})
+        fig, ax = plt.subplots(figsize=(12, 6))
+        # joints = ['left_hip', 'left_thigh', 'left_calf', 'right_hip', 'right_thigh', 'right_calf']
+        joints = ['left_thigh',  'right_thigh']
+        for joint in joints:
+            if f'dof_pos_{joint}' in log:
+                ax.plot(time, log[f'dof_pos_{joint}'], label=f'{joint} Measured')
+            if f'dof_pos_target_{joint}' in log:
+                ax.plot(time, log[f'dof_pos_target_{joint}'], label=f'{joint} Target', linestyle='dashed')
+        ax.set_xlabel('Time [s]', **font_properties)
+        ax.set_ylabel('Position [rad]', **font_properties)
+        ax.legend(loc='best', prop=legend_properties)
+        fig.tight_layout()
+        plt.show()
 
-        # Plot joint velocity
-        b = axs2[1]
-        if "dof_vel" in log:
-            b.plot(time, log["dof_vel"], label='measured')
-        if "dof_vel_target" in log:
-            b.plot(time, log["dof_vel_target"], label='target')
-        b.set_xlabel('Time [s]', **font_properties)
-        b.set_ylabel('Velocity [rad/s]', **font_properties)
-        b.legend(fontsize='large', loc='best', prop={'weight': 'bold'})
+        # Plot joint velocities for rear legs
+        fig, ax = plt.subplots(figsize=(12, 6))
+        for joint in joints:
+            if f'dof_vel_{joint}' in log:
+                ax.plot(time, log[f'dof_vel_{joint}'], label=f'{joint} Measured')
+        ax.set_xlabel('Time [s]', **font_properties)
+        ax.set_ylabel('Velocity [rad/s]', **font_properties)
+        ax.legend(loc='best', prop=legend_properties)
+        fig.tight_layout()
+        plt.show()
 
-        # Plot base vel z
-        c = axs2[2]
-        if "base_vel_z" in log:
-            c.plot(time, log["base_vel_z"], label='measured')
-        c.set_xlabel('Time [s]', **font_properties)
-        c.set_ylabel('Base lin vel [m/s]', **font_properties)
-        c.legend(fontsize='large', loc='best', prop={'weight': 'bold'})
+        # Plot joint torques for rear legs
+        fig, ax = plt.subplots(figsize=(12, 6))
+        for joint in joints:
+            if f'dof_torque_{joint}' in log:
+                ax.plot(time, log[f'dof_torque_{joint}'], label=f'{joint} Measured')
+        ax.set_xlabel('Time [s]', **font_properties)
+        ax.set_ylabel('Torque [Nm]', **font_properties)
+        ax.legend(loc='best', prop=legend_properties)
+        fig.tight_layout()
+        plt.show()
 
         # Plot base vel x
-        a = axs1[0]
+        fig, ax = plt.subplots(figsize=(12, 6))
         if "base_vel_x" in log:
-            a.plot(time, log["base_vel_x"], label='measured')
+            ax.plot(time, log["base_vel_x"], label='Measured')
         if "command_x" in log:
-            a.plot(time, log["command_x"], label='commanded')
-        a.set_xlabel('Time [s]', **font_properties)
-        a.set_ylabel('Base lin vel [m/s]', **font_properties)
-        a.legend(fontsize='large', loc='best', prop={'weight': 'bold'})
+            ax.plot(time, log["command_x"], label='Commanded')
+        ax.set_xlabel('Time [s]', **font_properties)
+        ax.set_ylabel('Base lin vel [m/s]', **font_properties)
+        ax.legend(loc='best', prop=legend_properties)
+        fig.tight_layout()
+        plt.show()
 
         # Plot base vel y
-        b = axs1[1]
+        fig, ax = plt.subplots(figsize=(12, 6))
         if "base_vel_y" in log:
-            b.plot(time, log["base_vel_y"], label='measured')
+            ax.plot(time, log["base_vel_y"], label='Measured')
         if "command_y" in log:
-            b.plot(time, log["command_y"], label='commanded')
-        b.set_xlabel('Time [s]', **font_properties)
-        b.set_ylabel('Base lin vel [m/s]', **font_properties)
-        b.legend(fontsize='large', loc='best', prop={'weight': 'bold'})
+            ax.plot(time, log["command_y"], label='Commanded')
+        ax.set_xlabel('Time [s]', **font_properties)
+        ax.set_ylabel('Base lin vel [m/s]', **font_properties)
+        ax.legend(loc='best', prop=legend_properties)
+        fig.tight_layout()
+        plt.show()
 
         # Plot base vel yaw
-        c = axs1[2]
+        fig, ax = plt.subplots(figsize=(12, 6))
         if "base_vel_yaw" in log:
-            c.plot(time, log["base_vel_yaw"], label='measured')
+            ax.plot(time, log["base_vel_yaw"], label='Measured')
         if "command_yaw" in log:
-            c.plot(time, log["command_yaw"], label='commanded')
-        c.set_xlabel('Time [s]', **font_properties)
-        c.set_ylabel('Base ang vel [rad/s]', **font_properties)
-        c.legend(fontsize='large', loc='best', prop={'weight': 'bold'})
+            ax.plot(time, log["command_yaw"], label='Commanded')
+        ax.set_xlabel('Time [s]', **font_properties)
+        ax.set_ylabel('Base ang vel [rad/s]', **font_properties)
+        ax.legend(loc='best', prop=legend_properties)
+        fig.tight_layout()
+        plt.show()
 
         # Plot contact forces
-        a = axs3[0]
+        fig, ax = plt.subplots(figsize=(12, 6))
         if "contact_forces_z" in log:
             forces = np.array(log["contact_forces_z"])
             for i in range(forces.shape[1]-2):
-                a.plot(time, forces[:, i+2], label=f'force {i+2}')
-        a.set_xlabel('Time [s]', **font_properties)
-        a.set_ylabel('Forces z [N]', **font_properties)
-        a.legend(fontsize='large', loc='best', prop={'weight': 'bold'})
+                if i == 1:
+                    ax.plot(time, forces[:, i+2], label='RL')
+                else:
+                    ax.plot(time, forces[:, i+2], label='RR')
+        ax.set_xlabel('Time [s]', **font_properties)
+        ax.set_ylabel('Forces z [N]', **font_properties)
+        ax.legend(loc='best', prop=legend_properties)
+        fig.tight_layout()
+        plt.show()
 
         # Plot torque/vel curves
-        b = axs3[1]
+        fig, ax = plt.subplots(figsize=(12, 6))
         if "dof_vel" in log and "dof_torque" in log:
-            b.plot(log["dof_vel"], log["dof_torque"], 'x', label='measured')
-        b.set_xlabel('Joint vel [rad/s]', **font_properties)
-        b.set_ylabel('Joint Torque [Nm]', **font_properties)
-        b.legend(fontsize='large', loc='best', prop={'weight': 'bold'})
+            ax.plot(log["dof_vel"], log["dof_torque"], 'x', label='Measured')
+        ax.set_xlabel('Joint vel [rad/s]', **font_properties)
+        ax.set_ylabel('Joint Torque [Nm]', **font_properties)
+        ax.legend(loc='best', prop=legend_properties)
+        fig.tight_layout()
+        plt.show()
 
         # Plot torques
-        c = axs3[2]
+        fig, ax = plt.subplots(figsize=(12, 6))
         if "dof_torque" in log:
-            c.plot(time, log["dof_torque"], label='measured')
-        c.set_xlabel('Time [s]', **font_properties)
-        c.set_ylabel('Joint Torque [Nm]', **font_properties)
-        c.legend(fontsize='large', loc='best', prop={'weight': 'bold'})
+            ax.plot(time, log["dof_torque"], label='Measured')
+        ax.set_xlabel('Time [s]', **font_properties)
+        ax.set_ylabel('Joint Torque [Nm]', **font_properties)
+        ax.legend(loc='best', prop=legend_properties)
+        fig.tight_layout()
+        plt.show()
 
-        # Apply tight layout to adjust spacing
-        fig1.tight_layout()
-        fig2.tight_layout()
-        fig3.tight_layout()
-
-        # Adjust spacing between subplots
-        fig1.subplots_adjust(wspace=0.3, hspace=0.3)
-        fig2.subplots_adjust(wspace=0.3, hspace=0.3)
-        fig3.subplots_adjust(wspace=0.3, hspace=0.3)
-
-        # Plot cost of transport
-        if "dof_torque" in log and "base_vel_x" in log:
-            fig4, ax4 = plt.subplots(figsize=(12, 6))
-            ax4.plot(time, cost_of_transport, label='Cost of Transport')
-            ax4.set_xlabel('Time [s]', **font_properties)
-            ax4.set_ylabel('Cost of Transport', **font_properties)
-            ax4.legend(fontsize='large', loc='best', prop={'weight': 'bold'})
-            fig4.tight_layout()
-
+        # Plot power consumption
+        fig, ax = plt.subplots(figsize=(12, 6))
+        if "power" in log:
+            ax.plot(time, log["power"], label='Power Consumption')
+        ax.set_xlabel('Time [s]', **font_properties)
+        ax.set_ylabel('Power [W]', **font_properties)
+        ax.legend(loc='best', prop=legend_properties)
+        fig.tight_layout()
+        plt.show()
+        
+         # Plot Cost of Transport (CoT)
+        fig, ax = plt.subplots(figsize=(12, 6))
+        if "CoT" in log:
+            ax.plot(time, log["CoT"], label='Cost of Transport (CoT)')
+        ax.set_xlabel('Time [s]', **font_properties)
+        ax.set_ylabel('CoT', **font_properties)
+        ax.legend(loc='best', prop=legend_properties)
+        fig.tight_layout()
         plt.show()
 
 

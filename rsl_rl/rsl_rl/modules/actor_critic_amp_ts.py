@@ -35,7 +35,11 @@ import torch
 import torch.nn as nn
 from torch.distributions import Normal
 from torch.nn.modules import rnn
+from typing import Optional,Tuple
+
 from rsl_rl.utils import unpad_trajectories
+import math
+
 
 
 
@@ -88,9 +92,11 @@ class ActorCriticAmpTs(nn.Module):
                  num_privileged_obs,
                  num_terrain_obs,
                  num_obs_history,
+                 num_obs_act_history,
                  num_actions,
                  num_env,
                  measure_heights_in_sim,
+                 context_window,
                  device='cpu',
                  actor_hidden_dims=[256, 128, 64],
                  critic_hidden_dims=[512, 256, 128],
@@ -105,6 +111,12 @@ class ActorCriticAmpTs(nn.Module):
                  encoder_input_dims=50,
                  privileged_encoder_latent_dims=8,
                  terrain_encoder_latent_dims=16,
+                 transformer_dim = 192,
+                 transformer_heads = 4,
+                 transformer_layers = 4,
+                 mlp_ratio = 2.0,
+                 obs_embed_hidden_sizes = [512, 512],
+                 action_pred_hidden_sizes = [256, 128],
                  activation='elu',
                  activation_output='tanh',
                  init_noise_std=1.0,
@@ -178,6 +190,11 @@ class ActorCriticAmpTs(nn.Module):
         # LSTM Encoder
         self.memory = Memory(num_obs, num_env = num_env, type=rnn_type, num_layers=rnn_num_layers, hidden_size=rnn_hidden_size, device = self.device)
 
+
+        # self.Transformer_encoder = CausalTransformer(num_obs_history=45, d_model=256, nhead=8, num_encoder_layers=3, dim_feedforward=256, privileged_encoder_latent_dims=39, terrain_encoder_latent_dims=187)
+        # self.Transformer_encoder = CompleteModel(num_obs, transformer_dim, transformer_heads, transformer_layers, mlp_ratio, obs_embed_hidden_sizes, action_pred_hidden_sizes, context_window, num_actions).to(device)
+        # self.add_module(f"Transformer_encoder", self.Transformer_encoder)
+
    
 
         # Studnet module
@@ -231,6 +248,7 @@ class ActorCriticAmpTs(nn.Module):
         # print(f"Adaptation Module: {self.adaptation_module}")
         print(f"Actor MLP: {self.actor}")
         print(f"Critic MLP: {self.critic}")
+        # print(f"Transformer encoder: {self.Transformer_encoder}")
 
         # Action noise
         self.fixed_std = fixed_std #amp
@@ -430,10 +448,32 @@ class ActorCriticAmpTs(nn.Module):
         # student_latent = student_latent.squeeze(0)
         # actions_mean = self.actor(torch.cat((observations, student_latent), dim=-1))
         # policy_info["latents"] = student_latent.detach().cpu().numpy()
-# -----------TCN------------------
-        student_latentlatent = self.adaptation_module(observation_history)
-        actions_mean = self.actor(torch.cat((observations, student_latentlatent), dim=-1))
-        policy_info["latents"] = student_latentlatent.detach().cpu().numpy()
+# -----------MLP------------------
+        student_latent = self.adaptation_module(observation_history)
+        actions_mean = self.actor(torch.cat((observations, student_latent), dim=-1))
+        policy_info["latents"] = student_latent.detach().cpu().numpy()
+
+
+
+        return actions_mean
+    
+
+    def act_inference_transformer(self, observations, observation_action_history, privileged_observations=None, hidden_state = None, policy_info={}):
+        """
+        Performs action selection during inference.
+
+        Args:
+            observations (Tensor): The current observations.
+            observation_history (Tensor): The observation history.
+            privileged_observations (None or Tensor): The privileged observations.
+            policy_info (dict): Dictionary to store policy information.
+
+        Returns:
+            Tensor: The inferred actions.
+        """
+
+        actions_mean = self.Transformer_encoder(observation_action_history)
+
         return actions_mean
 
     def evaluate(self, critic_observations, privileged_observations, **kwargs):
@@ -526,3 +566,149 @@ class Memory(nn.Module):
             self.hx[..., dones, :] = 0.0
             self.cx[..., dones, :] = 0.0
 
+
+class PositionalEncoding(nn.Module):
+    def __init__(self, d_model: int, dropout: float = 0.1, max_len: int = 5000):
+        super(PositionalEncoding, self).__init__()
+        self.dropout = nn.Dropout(p=dropout)
+
+        pe = torch.zeros(max_len, d_model)
+        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
+        div_term = torch.exp(
+            torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model)
+        )
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        pe = pe.unsqueeze(0).transpose(0, 1)
+        self.register_buffer("pe", pe)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = x + self.pe[:x.size(0), :]
+        return self.dropout(x)
+
+class ObservationActionEmbedding(nn.Module):
+    def __init__(self, input_dim: int, hidden_sizes: list, output_dim: int):
+        super(ObservationActionEmbedding, self).__init__()
+        layers = []
+        for in_dim, out_dim in zip([input_dim] + hidden_sizes, hidden_sizes + [output_dim]):
+            layers.append(nn.Linear(in_dim, out_dim))
+            layers.append(nn.ReLU())
+        self.network = nn.Sequential(*layers)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.network(x)
+
+class PositionwiseFeedForward(nn.Module):
+    def __init__(self, d_model: int, d_ff: int, dropout: float = 0.1):
+        super(PositionwiseFeedForward, self).__init__()
+        self.linear1 = nn.Linear(d_model, d_ff)
+        self.linear2 = nn.Linear(d_ff, d_model)
+        self.dropout = nn.Dropout(dropout)
+        self.activation = nn.ReLU()  # or nn.GELU()
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.linear2(self.dropout(self.activation(self.linear1(x))))
+
+class CausalTransformer(nn.Module):
+    def __init__(self, d_model: int, nhead: int, num_layers: int, mlp_ratio: int, dropout: float = 0.1):
+        super(CausalTransformer, self).__init__()
+        self.positional_encoding = PositionalEncoding(d_model, dropout)
+        dim_feedforward = int(d_model * mlp_ratio)
+        encoder_layer = nn.TransformerEncoderLayer(d_model, nhead, dim_feedforward, dropout)
+        self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers)
+        self.d_model = d_model
+
+    def forward(self, src: torch.Tensor) -> torch.Tensor:
+        src = src * math.sqrt(self.d_model)
+        src = self.positional_encoding(src)
+        mask = generate_square_subsequent_mask(src.size(0), src.device)
+        output = self.transformer_encoder(src, mask)
+        return output
+
+class ActionPredictionMLP(nn.Module):
+    def __init__(self, input_dim: int, hidden_sizes: list, output_dim: int):
+        super(ActionPredictionMLP, self).__init__()
+        layers = []
+        for in_dim, out_dim in zip([input_dim] + hidden_sizes, hidden_sizes + [output_dim]):
+            layers.append(nn.Linear(in_dim, out_dim))
+            layers.append(nn.ReLU())
+        if len(layers) > 1:
+            layers.pop()  # Remove the last ReLU for the output layer
+        self.network = nn.Sequential(*layers)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.network(x)
+
+class CompleteModel(nn.Module):
+    def __init__(self, num_obs: int, transformer_dim: int, transformer_heads: int, transformer_layers: int, transformer_ff_dim: int, obs_embed_hidden_sizes: list, action_pred_hidden_sizes: list, context_window: int, num_actions: int):
+        super(CompleteModel, self).__init__()
+        num_obs_act_pair = num_obs + num_actions
+        self.embedding = ObservationActionEmbedding(num_obs_act_pair, obs_embed_hidden_sizes, transformer_dim)
+        self.transformer = CausalTransformer(transformer_dim, transformer_heads, transformer_layers, transformer_ff_dim)
+        self.action_prediction = ActionPredictionMLP(transformer_dim, action_pred_hidden_sizes, num_actions)
+        self.context_window = context_window
+        self.num_actions = num_actions
+
+    def forward(self, obs_action_pairs: torch.Tensor) -> torch.Tensor:
+        batch_size, num_obs_act_history = obs_action_pairs.shape
+        obs_action_dim = int(num_obs_act_history / self.context_window)
+
+        # Embed observation-action pairs
+        embedded_obs_action = self.embedding(obs_action_pairs.view(-1, obs_action_dim)).view(batch_size, self.context_window, -1)
+        
+        # Pass through transformer
+        transformer_output = self.transformer(embedded_obs_action.permute(1, 0, 2))  # (context_window, batch_size, transformer_dim)
+        
+        # Predict actions
+        action_predictions = self.action_prediction(transformer_output[-1, :, :])  # Use the last token's output for prediction
+        
+        return action_predictions
+
+def generate_square_subsequent_mask(sz: int, device: str = "cpu") -> torch.Tensor:
+    mask = (torch.triu(torch.ones(sz, sz)) == 1).transpose(0, 1)
+    mask = (
+        mask.float()
+        .masked_fill(mask == 0, float('-inf'))
+        .masked_fill(mask == 1, float(0.0))
+    ).to(device=device)
+    return mask
+
+class TCNBlock(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride, dilation, padding):
+        super(TCNBlock, self).__init__()
+        self.conv1 = nn.Conv1d(in_channels, out_channels, kernel_size, stride=stride, padding=padding, dilation=dilation)
+        self.bn1 = nn.BatchNorm1d(out_channels)
+        self.relu1 = nn.ReLU()
+        self.conv2 = nn.Conv1d(out_channels, out_channels, kernel_size, stride=stride, padding=padding, dilation=dilation)
+        self.bn2 = nn.BatchNorm1d(out_channels)
+        self.relu2 = nn.ReLU()
+
+        self.downsample = nn.Conv1d(in_channels, out_channels, 1) if in_channels != out_channels else None
+
+    def forward(self, x):
+        out = self.conv1(x)
+        out = self.bn1(out)
+        out = self.relu1(out)
+        out = self.conv2(out)
+        out = self.bn2(out)
+        out = self.relu2(out)
+
+        if self.downsample is not None:
+            x = self.downsample(x)
+
+        return out + x
+    
+class TCNEncoder(nn.Module):
+    def __init__(self, num_inputs, num_channels, kernel_size, stride=1, dilation_base=2):
+        super(TCNEncoder, self).__init__()
+        layers = []
+        num_levels = len(num_channels)
+        for i in range(num_levels):
+            dilation = dilation_base ** i
+            in_channels = num_inputs if i == 0 else num_channels[i-1]
+            out_channels = num_channels[i]
+            layers.append(TCNBlock(in_channels, out_channels, kernel_size, stride, dilation, padding=(kernel_size-1) * dilation // 2))
+        self.network = nn.Sequential(*layers)
+
+    def forward(self, x):
+        return self.network(x)

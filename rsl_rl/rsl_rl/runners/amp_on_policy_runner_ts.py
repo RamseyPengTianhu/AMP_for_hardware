@@ -77,15 +77,22 @@ class AMPTSOnPolicyRunner:
         self.num_steps_per_env = self.cfg["num_steps_per_env"]
         self.num_mini_batches = self.alg_cfg["num_mini_batches"]
         self.measure_heights_in_sim = self.env.measure_heights_in_sim
+        self.context_window = self.env.context_window
 
         self.num_obs_sequence = self.env.num_obs_sequence
         self.obs_buffer = torch.zeros(self.num_obs_sequence,self.env.num_envs,self.env.num_obs).to(self.device)
         # self.dones_buffer = torch.zeros(self.env.num_envs, self.num_obs_sequence, dtype=torch.bool).to(self.device)
         self.dones_buffer = torch.zeros(self.env.num_obs_sequence, self.env.num_envs, dtype=torch.bool).to(self.device)
+        self.obs_act_buffer = torch.zeros(self.env.num_envs,(self.env.num_obs_act_history)).to(self.device)
+        self.obs_tea_act_buffer = torch.zeros(self.env.num_envs,(self.env.num_obs_act_history)).to(self.device)
+        self.obs_std_act_buffer = torch.zeros(self.env.num_envs,(self.env.num_obs_act_history)).to(self.device)
+        self.obs_act_history_play = torch.zeros(self.env.num_envs,(self.env.num_obs_act_history)).to(self.device)
+        self.student_action = torch.zeros(self.env.num_envs,(self.env.num_action)).to(self.device)
+
         # print('Init self.dones_buffer:',self.dones_buffer)
 
         actor_critic: ActorCritic = actor_critic_class(num_actor_obs, self.env.num_privileged_obs, self.env.num_terrain_obs,
-                                                       self.env.num_obs_history, self.env.num_policy_outputs,self.env.num_envs,self.measure_heights_in_sim,self.device,
+                                                       self.env.num_obs_history, self.env.num_obs_act_history, self.env.num_policy_outputs,self.env.num_envs,self.measure_heights_in_sim, self.context_window,self.device,
                                                         **self.policy_cfg).to(self.device)
 
         amp_data = AMPLoader(
@@ -128,8 +135,7 @@ class AMPTSOnPolicyRunner:
         else:
             num_privileged_obs = self.env.num_privileged_obs - self.env.num_terrain_obs
 
-
-        self.alg.init_storage(self.env.num_envs, self.num_steps_per_env, [num_actor_obs], [num_privileged_obs], [self.env.num_terrain_obs], [self.env.num_obs_history], [self.env.num_policy_outputs])
+        self.alg.init_storage(self.env.num_envs, self.num_steps_per_env, [num_actor_obs], [num_privileged_obs], [self.env.num_terrain_obs], [self.env.num_obs_history], [self.env.num_obs_act_history],[self.env.num_policy_outputs])
 
         # Log
         self.log_dir = log_dir
@@ -180,7 +186,15 @@ class AMPTSOnPolicyRunner:
             # obs, critic_obs, privileged_obs, amp_obs, obs_history
             with torch.inference_mode():
                 for i in range(self.num_steps_per_env):
-                    actions, self.obs_buffer, self.dones_buffer  = self.alg.act(obs, critic_obs, privileged_obs, amp_obs, obs_history, self.last_dones, self.obs_buffer, self.dones_buffer, self.num_obs_sequence)
+
+                    # self.student_action = self.alg.actor_critic.Transformer_encoder(self.obs_std_act_buffer)
+                     # Act and update buffers
+                    actions, self.obs_buffer, self.dones_buffer, self.obs_std_act_buffer, self.obs_tea_act_buffer = self.alg.act(
+                        obs, critic_obs, privileged_obs, amp_obs, obs_history, 
+                        self.obs_tea_act_buffer, self.obs_std_act_buffer, 
+                        self.student_action, self.last_dones, self.obs_buffer, 
+                        self.dones_buffer, self.num_obs_sequence, self.context_window
+                    )
                     obs_dict, rewards, dones, infos, reset_env_ids, terminal_amp_states = self.env.step(actions)
                     obs, privileged_obs, obs_history = obs_dict["obs"], obs_dict["privileged_obs"], obs_dict[
                         "obs_history"]
@@ -222,7 +236,7 @@ class AMPTSOnPolicyRunner:
                 self.alg.compute_returns(obs, privileged_obs)
             
             # mean_value_loss, mean_surrogate_loss, mean_amp_loss, mean_grad_pen_loss, mean_policy_pred, mean_expert_pred = self.alg.update()
-            mean_value_loss, mean_surrogate_loss, mean_amp_loss, mean_grad_pen_loss, mean_policy_pred, mean_expert_pred, mean_latent_loss, mean_adaptation_loss, aug_lstm_obs_batch, lstm_masks_batch= self.alg.update()
+            mean_value_loss, mean_surrogate_loss, mean_amp_loss, mean_grad_pen_loss, mean_policy_pred, mean_expert_pred, mean_latent_loss, mean_adaptation_loss, offline_transformer_loss, online_transformer_loss, aug_lstm_obs_batch, lstm_masks_batch= self.alg.update()
             stop = time.time()
             learn_time = stop - start
             if self.log_dir is not None:
@@ -280,7 +294,9 @@ class AMPTSOnPolicyRunner:
         self.writer.add_scalar('Loss/AMP', locs['mean_amp_loss'], locs['it'])
         self.writer.add_scalar('Loss/AMP_grad', locs['mean_grad_pen_loss'], locs['it'])
         self.writer.add_scalar('Loss/LSTM_latent', locs['mean_latent_loss'], locs['it'])
-        self.writer.add_scalar('Loss/TCN_latent', locs['mean_adaptation_loss'], locs['it'])
+        self.writer.add_scalar('Loss/History_MLP_latent', locs['mean_adaptation_loss'], locs['it'])
+        self.writer.add_scalar('Loss/Offline_Transformer', locs['offline_transformer_loss'], locs['it'])
+        self.writer.add_scalar('Loss/Online_Transformer', locs['online_transformer_loss'], locs['it'])
         self.writer.add_scalar('Loss/learning_rate', self.alg.learning_rate, locs['it'])
         self.writer.add_scalar('Policy/mean_noise_std', mean_std.item(), locs['it'])
         self.writer.add_scalar('Perf/total_fps', fps, locs['it'])
@@ -306,7 +322,9 @@ class AMPTSOnPolicyRunner:
                           f"""{'AMP mean policy pred:':>{pad}} {locs['mean_policy_pred']:.4f}\n"""
                           f"""{'AMP mean expert pred:':>{pad}} {locs['mean_expert_pred']:.4f}\n"""
                           f"""{'LSTM_Latent loss:':>{pad}} {locs['mean_latent_loss']:.4f}\n"""
-                          f"""{'TCN_Latent loss:':>{pad}} {locs['mean_adaptation_loss']:.4f}\n"""
+                          f"""{'History_MLP_Latent loss:':>{pad}} {locs['mean_adaptation_loss']:.4f}\n"""
+                          f"""{'Offline transformer loss:':>{pad}} {locs['offline_transformer_loss']:.4f}\n"""
+                          f"""{'Online transformer loss:':>{pad}} {locs['online_transformer_loss']:.4f}\n"""
                           f"""{'Mean action noise std:':>{pad}} {mean_std.item():.2f}\n"""
                           f"""{'Mean reward:':>{pad}} {statistics.mean(locs['rewbuffer']):.2f}\n"""
                           f"""{'Mean episode length:':>{pad}} {statistics.mean(locs['lenbuffer']):.2f}\n""")
@@ -357,4 +375,17 @@ class AMPTSOnPolicyRunner:
         if device is not None:
             self.alg.actor_critic.to(device)
         return self.alg.actor_critic.act_inference
-        # return self.alg.actor_critic.act_expert
+        # return self.alg.actor_critic.act_inference_transformer
+
+    def get_observation_action_history(self, obs, act, device=None):
+        # self.observation_action_history_reset()
+        obs_act_pair = torch.cat((obs,act),dim = -1)
+
+        self.obs_act_history_play =torch.cat((self.obs_act_history_play[:,obs_act_pair.shape[1]:], obs_act_pair), dim=-1)
+        self.obs_act_history_play = self.obs_act_history_play[:,-self.context_window*obs_act_pair.shape[1]:]
+        if device is not None:
+            self.alg.actor_critic.to(device)
+        return self.obs_act_history_play
+    def observation_action_history_reset(self):
+        self.obs_act_buffer[:, :] = 0
+       

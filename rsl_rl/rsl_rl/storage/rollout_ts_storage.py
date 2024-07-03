@@ -56,6 +56,8 @@ class RolloutTsStorage:
             self.action_mean = None
             self.action_sigma = None
             self.hidden_states = None
+            self.observation_teacher_actions_histories = None
+            self.observation_student_actions_histories = None
 
         def clear(self):
             self.__init__()
@@ -67,6 +69,7 @@ class RolloutTsStorage:
                  privileged_obs_shape,
                  terrain_obs_shape,
                  obs_history_shape,
+                 obs_act_history_shape,
                  actions_shape,
                  device='cpu'):
 
@@ -76,6 +79,7 @@ class RolloutTsStorage:
         self.privileged_obs_shape = privileged_obs_shape
         self.terrain_obs_shape = terrain_obs_shape
         self.obs_history_shape = obs_history_shape
+        self.obs_act_history_shape = obs_act_history_shape
         self.actions_shape = actions_shape
         self.iterations = 0
 
@@ -100,6 +104,17 @@ class RolloutTsStorage:
                                                  *obs_history_shape,
                                                  device=self.device)
         
+        self.observation_teacher_actions_histories = torch.zeros(num_transitions_per_env,
+                                                 num_envs,
+                                                 *obs_act_history_shape,
+                                                 device=self.device)
+        
+        self.observation_student_actions_histories = torch.zeros(num_transitions_per_env,
+                                                 num_envs,
+                                                 *obs_act_history_shape,
+                                                 device=self.device)
+        
+        
         self.rewards = torch.zeros(num_transitions_per_env, num_envs, 1, device=self.device)
         self.actions = torch.zeros(num_transitions_per_env, num_envs, *actions_shape, device=self.device)
         self.dones = torch.zeros(num_transitions_per_env, num_envs, 1, device=self.device).byte()
@@ -111,6 +126,8 @@ class RolloutTsStorage:
         self.advantages = torch.zeros(num_transitions_per_env, num_envs, 1, device=self.device)
         self.mu = torch.zeros(num_transitions_per_env, num_envs, *actions_shape, device=self.device)
         self.sigma = torch.zeros(num_transitions_per_env, num_envs, *actions_shape, device=self.device)
+        self.student_action_mean = torch.zeros(num_transitions_per_env, num_envs, *actions_shape, device=self.device)
+
 
         self.num_transitions_per_env = num_transitions_per_env
         self.num_envs = num_envs
@@ -129,6 +146,8 @@ class RolloutTsStorage:
         if self.privileged_observations is not None:
             self.privileged_observations[self.step].copy_(transition.privileged_observations)
         self.observation_histories[self.step].copy_(transition.observation_histories)
+        self.observation_teacher_actions_histories[self.step].copy_(transition.observation_teacher_actions_histories)
+        self.observation_student_actions_histories[self.step].copy_(transition.observation_student_actions_histories)
         self.actions[self.step].copy_(transition.actions)
         self.rewards[self.step].copy_(transition.rewards.view(-1, 1))
         self.dones[self.step].copy_(transition.dones.view(-1, 1))
@@ -220,6 +239,8 @@ class RolloutTsStorage:
         observations = self.observations.flatten(0, 1)
         privileged_obs = self.privileged_observations.flatten(0, 1)
         obs_history = self.observation_histories.flatten(0, 1)
+        obs_tea_act_history = self.observation_teacher_actions_histories.flatten(0, 1)
+        obs_std_act_history = self.observation_student_actions_histories.flatten(0, 1)
         critic_observations = observations
 
         actions = self.actions.flatten(0, 1)
@@ -241,6 +262,8 @@ class RolloutTsStorage:
                 critic_observations_batch = critic_observations[batch_idx]
                 privileged_obs_batch = privileged_obs[batch_idx]
                 obs_history_batch = obs_history[batch_idx]
+                obs_tea_act_history_batch = obs_tea_act_history[batch_idx]
+                obs_std_act_history_batch = obs_std_act_history[batch_idx]
                 actions_batch = actions[batch_idx]
                 target_values_batch = values[batch_idx]
                 returns_batch = returns[batch_idx]
@@ -248,16 +271,18 @@ class RolloutTsStorage:
                 advantages_batch = advantages[batch_idx]
                 old_mu_batch = old_mu[batch_idx]
                 old_sigma_batch = old_sigma[batch_idx]
-                yield obs_batch, critic_observations_batch, privileged_obs_batch, obs_history_batch, actions_batch, target_values_batch, advantages_batch, returns_batch, \
+                yield obs_batch, critic_observations_batch, privileged_obs_batch, obs_history_batch, obs_tea_act_history_batch, obs_std_act_history_batch, actions_batch, target_values_batch, advantages_batch, returns_batch, \
                        old_actions_log_prob_batch, old_mu_batch, old_sigma_batch, (None, None), None
+                # yield obs_batch, critic_observations_batch, privileged_obs_batch, obs_history_batch, actions_batch, target_values_batch, advantages_batch, returns_batch, \
+                #        old_actions_log_prob_batch, old_mu_batch, old_sigma_batch, (None, None), None
                 # print('obs_batch.shape:',obs_batch.shape)
                 # print('privileged_obs_batch.shape:',privileged_obs_batch.shape)
-                obs_np = obs_batch.cpu().detach().numpy()
-                privileged_np = privileged_obs_batch.cpu().detach().numpy()
-                obs_shape = obs_np.shape
-                # Reshape masks_np to match obs_np shape
-                obs_csv_file = f'/home/tianhu/AMP_for_hardware/datasets/Save_data/{self.iterations}_mlp_obs_batch.csv'
-                privileged_csv_file = f'/home/tianhu/AMP_for_hardware/datasets/Save_data/{self.iterations}_mlp_privileged_batch.csv'
+                # obs_np = obs_batch.cpu().detach().numpy()
+                # privileged_np = privileged_obs_batch.cpu().detach().numpy()
+                # obs_shape = obs_np.shape
+                # # Reshape masks_np to match obs_np shape
+                # obs_csv_file = f'/home/tianhu/AMP_for_hardware/datasets/Save_data/{self.iterations}_mlp_obs_batch.csv'
+                # privileged_csv_file = f'/home/tianhu/AMP_for_hardware/datasets/Save_data/{self.iterations}_mlp_privileged_batch.csv'
 
                 # Save each array to CSV
                 # Save obs_np to CSV with shape information
@@ -401,101 +426,46 @@ class RolloutTsStorage:
 
                 first_traj = last_traj
 
-    def lsstm_mini_batch_generator(self, num_mini_batches, num_epochs=8):
-        # Split and pad trajectories to prepare for batching
-        padded_obs_trajectories, trajectory_masks = split_and_pad_trajectories(self.observations, self.dones)
-        mini_batch_size = self.num_envs // num_mini_batches
-        print('mini_batch_size:',mini_batch_size)
+   
+    def mini_batch_generator_tcn(self, num_mini_batches, num_epochs=8):
+        batch_size = self.num_envs * self.num_transitions_per_env
+        mini_batch_size = batch_size // num_mini_batches
 
-        desired_batch_size = self.num_envs
-        input_data = []  # List to accumulate sequences, masks, and hidden states
-        current_batch_size = 0
-        for ep in range(num_epochs):
-            
-            first_traj = 0
+        indices = torch.randperm(num_mini_batches * mini_batch_size, requires_grad=False, device=self.device)
 
+        observations = self.observations.flatten(0, 1)
+        privileged_obs = self.privileged_observations.flatten(0, 1)
+        obs_history = self.observation_histories.flatten(0, 1)
+        obs_act_history = self.observation_actions_histories.flatten(0, 1)
+        critic_observations = observations
+
+        actions = self.actions.flatten(0, 1)
+        values = self.values.flatten(0, 1)
+        returns = self.returns.flatten(0, 1)
+        old_actions_log_prob = self.actions_log_prob.flatten(0, 1)
+        advantages = self.advantages.flatten(0, 1)
+        old_mu = self.mu.flatten(0, 1)
+        old_sigma = self.sigma.flatten(0, 1)
+
+        for epoch in range(num_epochs):
             for i in range(num_mini_batches):
                 start = i * mini_batch_size
-                stop = (i + 1) * mini_batch_size
+                end = (i + 1) * mini_batch_size
+                batch_idx = indices[start:end]
 
-                # Prepare mask indicating done indices
-                dones = self.dones.squeeze(-1)
-                last_was_done = torch.zeros_like(dones, dtype=torch.bool)
-                last_was_done[1:] = dones[:-1]
-                last_was_done[0] = True
+                # Reshape for TCN: (mini_batch_size, input_channels, sequence_length)
+                obs_batch = observations[batch_idx].view(mini_batch_size, -1, observations.size(-1)).permute(0, 2, 1)
+                critic_observations_batch = critic_observations[batch_idx].view(mini_batch_size, -1, critic_observations.size(-1)).permute(0, 2, 1)
+                privileged_obs_batch = privileged_obs[batch_idx].view(mini_batch_size, -1, privileged_obs.size(-1)).permute(0, 2, 1)
+                obs_history_batch = obs_history[batch_idx].view(mini_batch_size, -1, obs_history.size(-1)).permute(0, 2, 1)
+                obs_act_history_batch = obs_act_history[batch_idx].view(mini_batch_size, -1, obs_act_history.size(-1)).permute(0, 2, 1)
+                actions_batch = actions[batch_idx]
+                target_values_batch = values[batch_idx]
+                returns_batch = returns[batch_idx]
+                old_actions_log_prob_batch = old_actions_log_prob[batch_idx]
+                advantages_batch = advantages[batch_idx]
+                old_mu_batch = old_mu[batch_idx]
+                old_sigma_batch = old_sigma[batch_idx]
 
-                # Compute trajectories batch size
-                trajectories_batch_size = torch.sum(last_was_done[:, start:stop])
-                last_traj = first_traj + trajectories_batch_size
-
-                # Accumulate sequences and hidden states for the current batch
-                masks_batch = trajectory_masks[:, first_traj:last_traj]
-                obs_batch = padded_obs_trajectories[:, first_traj:last_traj]
-                hid_h_batch = [
-                saved_hidden_states[:, first_traj:last_traj, :] for saved_hidden_states in self.saved_hidden_states_h
-                ]
-                hid_c_batch = [
-                    saved_hidden_states[:, first_traj:last_traj, :] for saved_hidden_states in self.saved_hidden_states_c
-                ]
-                # Append to input_data
-                input_data.append((obs_batch, (hid_h_batch, hid_c_batch), masks_batch))
-                current_batch_size += trajectories_batch_size
-                 # Check if accumulated batch size meets or exceeds fixed_batch_size
-            if current_batch_size >= desired_batch_size:
-                # Prepare input tensors for LSTM model
-                batch_obs = torch.cat([data[0] for data in input_data], dim=1)
-                batch_hid_h = tuple(torch.cat([data[1][0][i] for data in input_data], dim=1) for i in range(len(hid_h_batch)))
-                batch_hid_c = tuple(torch.cat([data[1][1][i] for data in input_data], dim=1) for i in range(len(hid_c_batch)))
-                batch_masks = torch.cat([data[2] for data in input_data], dim=1)
-
-                # Yield the complete batch
-                yield batch_obs, (batch_hid_h, batch_hid_c), batch_masks
-                print('batch_obs.shape:',batch_obs.shape)
-                print('batch_hid_h.shape:',batch_hid_h[0].shape)
-                print('batch_hid_c.shape:',batch_hid_c[0].shape)
-                print('batch_masks.shape:',batch_masks.shape)
-
-                # Reset input_data and current_batch_size for the next batch
-                input_data = []
-                current_batch_size = 0
-
-            # Update first_traj for the next mini-batch
-            first_traj = last_traj
-
-def pad_tensor(tensors_list, target_size):
-    # 假设 tensors_list 是一个包含若干个 m*q*n 张量的列表  
-        # tensors_list = [...]  # 这里应该是您的实际张量列表  
-  
-        # 创建一个新的列表来存储填充后的张量  
-        padded_tensors_list = []  
-                # 遍历原始张量列表中的每个张量  
-        # target_size = max([tensor.shape[1] for tensor in tensors_list])
-        for tensor in tensors_list:  
-            try:
-                m, q, n = tensor.shape  # 获取当前张量的形状  
-            except:
-                print(type(tensor))
-                print(dir(tensor))
-                #print(tensor.size(
-                print(tensor)
-      
-            # 如果 q 已经等于 229，则无需填充，直接添加到新列表中  
-            if q == target_size:  
-                padded_tensors_list.append(tensor)  
-                continue  
-      
-            # 提取填充值（第二个维度的最后一个元素）  
-            fill_value = tensor[:, -1, :].unsqueeze(1)  
-
-            # 创建一个用于填充的全1张量，形状为 (m, 229-q, n)  
-            repeat_times = torch.ones(m, target_size - q, n, dtype=torch.long)  
-      
-            # 使用repeat_interleave来重复填充值，创建填充部分  
-            fill_tensor = fill_value.repeat_interleave(repeat_times, dim=1)  
-      
-            # 使用 torch.cat 在第二个维度上将原始张量和填充张量拼接起来  
-            padded_tensor = torch.cat((tensor, fill_tensor), dim=1)  
-      
-            # 将填充后的张量添加到新列表中  
-            padded_tensors_list.append(padded_tensor)
-        return padded_tensors_list   
+                yield obs_batch, critic_observations_batch, privileged_obs_batch, obs_history_batch, obs_act_history_batch, actions_batch, target_values_batch, advantages_batch, returns_batch, \
+                      old_actions_log_prob_batch, old_mu_batch, old_sigma_batch, (None, None), None
