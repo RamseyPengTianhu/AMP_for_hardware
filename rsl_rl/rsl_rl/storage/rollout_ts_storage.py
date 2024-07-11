@@ -152,9 +152,9 @@ class RolloutTsStorage:
         self.rewards[self.step].copy_(transition.rewards.view(-1, 1))
         self.dones[self.step].copy_(transition.dones.view(-1, 1))
         self.values[self.step].copy_(transition.values)
-        # self.actions_log_prob[self.step].copy_(transition.actions_log_prob.view(-1, 1))
+        self.actions_log_prob[self.step].copy_(transition.actions_log_prob.view(-1, 1))
         self.mu[self.step].copy_(transition.action_mean)
-        # self.sigma[self.step].copy_(transition.action_sigma)
+        self.sigma[self.step].copy_(transition.action_sigma)
         self._save_hidden_states_LSTM(transition.hidden_states)
         self.step += 1
 

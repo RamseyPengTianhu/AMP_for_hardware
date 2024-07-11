@@ -603,7 +603,28 @@ class AMPTSPPO:
                 grad_pen_loss = self.discriminator.compute_grad_pen(
                     *sample_amp_expert, lambda_=10)
 # ----------------------------------------------
-
+                # transformer_action_batch = self.actor_critic.Transformer_encoder(obs_act_history_batch)
+            
+           
+            
+                # # Calculate probabilities of the teacher actions without tracking gradients
+                # with torch.no_grad():
+                #     teacher_actions = F.softmax(mu_batch, dim=-1)
+                #     # Calculate log probabilities of the actions predicted by the transformer
+                #     log_transformer_actions = F.log_softmax(transformer_action_batch, dim=-1)
+                
+                # # Compute KL divergence loss
+                # kl_div_loss = F.kl_div(log_transformer_actions, teacher_actions, reduction='batchmean')
+                
+                # # Combine RL loss and KL divergence loss
+                # lambda_factor = 0.1  # Adjust the lambda factor as needed
+                # transformer_loss = lambda_factor * kl_div_loss
+                
+                # Zero gradients, backward pass, and optimizer step
+                # self.transformer_optimizer.zero_grad()
+                # total_loss.backward()
+                # self.transformer_optimizer.step()
+                
                 
 
 
@@ -634,13 +655,13 @@ class AMPTSPPO:
         # Transformer encoder training
 
                 # Offline Pretraining
-                # offline_transformer_loss = self.offline_pretraining(obs_tea_act_history_batch, mu_batch, aug_obs_batch, privileged_obs_batch, obs_history_batch, offline_transformer_loss)
+                # offline_transformer_loss = self.offline_pretraining(obs_tea_act_history_batch, mu_batch)
 
                 # Anneal lambda_kld
                 # lambda_kld = self.anneal_lambda(current_step, anneal_steps)
 
                 # Online Correction
-                # online_transformer_loss = self.online_correction(obs_std_act_history_batch, aug_obs_batch, privileged_obs_batch, obs_history_batch, lambda_kld, online_transformer_loss)
+                # online_transformer_loss = self.online_correction(obs_std_act_history_batch, mu_batch, lambda_kld)
 
 # ------------- AMP fuction added --------------
                 if not self.actor_critic.fixed_std and self.min_std is not None:
@@ -677,7 +698,23 @@ class AMPTSPPO:
 
 # # ----------------------Teacher and student policy framework-------------------
 # ----------------------Observation history MLP-------------------
-        mean_adaptation_loss = self.train_adaptation_module(obs_history_batch, privileged_obs_batch, mean_adaptation_loss)
+        # Adaptation module gradient step
+        for epoch in range(self.num_adaptation_module_substeps):
+            adaptation_pred = self.actor_critic.adaptation_module(obs_history_batch)
+            with torch.no_grad():
+                if self.measure_heights_in_sim:
+                    privileged_target = self.actor_critic.privileged_factor_encoder(privileged_obs_batch[:,:39])
+                    terrain_target = self.actor_critic.terrain_factor_encoder(privileged_obs_batch[:,39:])
+                    latent_target = torch.cat((privileged_target,terrain_target),dim=-1)
+                # residual = (adaptation_target - adaptation_pred).norm(dim=1)
+
+            adaptation_loss = F.mse_loss(adaptation_pred, latent_target)
+
+            self.adaptation_optimizer.zero_grad()
+            adaptation_loss.backward()
+            self.adaptation_optimizer.step()
+
+            mean_adaptation_loss += adaptation_loss.item()
 # -----------------------------------------------------------------------------
         num_updates = self.num_learning_epochs * self.num_mini_batches
         mean_value_loss /= num_updates
@@ -743,4 +780,3 @@ class AMPTSPPO:
 
 
         return mean_value_loss, mean_surrogate_loss, mean_amp_loss, mean_grad_pen_loss, mean_policy_pred, mean_expert_pred, mean_latent_loss, mean_adaptation_loss, offline_transformer_loss, online_transformer_loss, aug_lstm_obs_batch, lstm_masks_batch
-    
