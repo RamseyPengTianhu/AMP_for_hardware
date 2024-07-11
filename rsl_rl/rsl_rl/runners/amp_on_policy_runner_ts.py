@@ -187,7 +187,6 @@ class AMPTSOnPolicyRunner:
             with torch.inference_mode():
                 for i in range(self.num_steps_per_env):
 
-                    # self.student_action = self.alg.actor_critic.Transformer_encoder(self.obs_std_act_buffer)
                      # Act and update buffers
                     actions, self.obs_buffer, self.dones_buffer, self.obs_std_act_buffer, self.obs_tea_act_buffer = self.alg.act(
                         obs, critic_obs, privileged_obs, amp_obs, obs_history, 

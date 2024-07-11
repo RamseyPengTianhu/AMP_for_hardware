@@ -66,13 +66,13 @@ class Terrain:
         self.tot_rows = int(self.cfg.num_rows * self.length_per_env_pixels) + 2 * self.border
 
         self.height_field_raw = np.zeros((self.tot_rows, self.tot_cols), dtype=np.int16)
-        # self.terrain_types_order = [
-        #     "plane", "uniform_terrain", "wave_terrain", "stepping_stones_terrain", 
-        #     "pyramid_sloped_terrain", "pyramid_stairs_terrain", "discrete_obstacles_terrain"
-        # ]
         self.terrain_types_order = [
-            "uniform_terrain"
+            "plane", "uniform_terrain", "wave_terrain", "stepping_stones_terrain", 
+            "pyramid_sloped_terrain", "pyramid_stairs_terrain", "discrete_obstacles_terrain"
         ]
+        # self.terrain_types_order = [
+        #     "uniform_terrain"
+        # ]
         self.curiculum()
 
         self.heightsamples = self.height_field_raw

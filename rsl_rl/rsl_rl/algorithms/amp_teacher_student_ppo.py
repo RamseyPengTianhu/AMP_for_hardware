@@ -176,8 +176,8 @@ class AMPTSPPO:
         self.actor_critic.train()
     
     def act(self, obs, critic_obs, privileged_obs, amp_obs, obs_history, obs_tea_act_history, obs_std_act_history, student_action, dones, obs_buffer, dones_buffer, num_obs_sequence, context_window):
-        self.load_pretrained_policy(self.model_path)
-        pre_trained_inference_policy = self.get_existing_policy(mode='inference')
+        # self.load_pretrained_policy(self.model_path)
+        # pre_trained_inference_policy = self.get_existing_policy(mode='inference')
 
 
 
@@ -235,17 +235,17 @@ class AMPTSPPO:
         # print('self.actor_critic.act(aug_obs, aug_privileged_obs).detach():',self.actor_critic.act(aug_obs, aug_privileged_obs).detach())
         # print('pre_trained_inference_policy(aug_obs, aug_obs_history).detach():',pre_trained_inference_policy(aug_obs, aug_obs_history).detach())
 
-        self.transition.actions = pre_trained_inference_policy(aug_obs, aug_obs_history).detach()
-        self.transition.action_mean = pre_trained_inference_policy(aug_obs, aug_obs_history).detach()
+        # self.transition.actions = pre_trained_inference_policy(aug_obs, aug_obs_history).detach()
+        # self.transition.action_mean = pre_trained_inference_policy(aug_obs, aug_obs_history).detach()
 
         # self.transition.actions = pre_trained_inference_policy(aug_obs, aug_privileged_obs).detach()
         # self.transition.action_mean = pre_trained_inference_policy(aug_obs, aug_privileged_obs).detach()
 
-        # self.transition.actions = self.actor_critic.act(aug_obs, aug_privileged_obs).detach()
+        self.transition.actions = self.actor_critic.act(aug_obs, aug_privileged_obs).detach()
         self.transition.values = self.actor_critic.evaluate(aug_obs, aug_privileged_obs).detach()
-        # self.transition.actions_log_prob = self.actor_critic.get_actions_log_prob(self.transition.actions).detach()
-        # self.transition.action_mean = self.actor_critic.action_mean.detach()
-        # self.transition.action_sigma = self.actor_critic.action_std.detach()
+        self.transition.actions_log_prob = self.actor_critic.get_actions_log_prob(self.transition.actions).detach()
+        self.transition.action_mean = self.actor_critic.action_mean.detach()
+        self.transition.action_sigma = self.actor_critic.action_std.detach()
         
         # Record observations before env.step()
         self.transition.observations = obs
@@ -603,28 +603,7 @@ class AMPTSPPO:
                 grad_pen_loss = self.discriminator.compute_grad_pen(
                     *sample_amp_expert, lambda_=10)
 # ----------------------------------------------
-                # transformer_action_batch = self.actor_critic.Transformer_encoder(obs_act_history_batch)
-            
-           
-            
-                # # Calculate probabilities of the teacher actions without tracking gradients
-                # with torch.no_grad():
-                #     teacher_actions = F.softmax(mu_batch, dim=-1)
-                #     # Calculate log probabilities of the actions predicted by the transformer
-                #     log_transformer_actions = F.log_softmax(transformer_action_batch, dim=-1)
-                
-                # # Compute KL divergence loss
-                # kl_div_loss = F.kl_div(log_transformer_actions, teacher_actions, reduction='batchmean')
-                
-                # # Combine RL loss and KL divergence loss
-                # lambda_factor = 0.1  # Adjust the lambda factor as needed
-                # transformer_loss = lambda_factor * kl_div_loss
-                
-                # Zero gradients, backward pass, and optimizer step
-                # self.transformer_optimizer.zero_grad()
-                # total_loss.backward()
-                # self.transformer_optimizer.step()
-                
+
                 
 
 
@@ -647,18 +626,18 @@ class AMPTSPPO:
                 
 
                 # Gradient step
-                # self.optimizer.zero_grad()
-                # loss.backward()
-                # nn.utils.clip_grad_norm_(self.actor_critic.parameters(), self.max_grad_norm)
-                # self.optimizer.step()
+                self.optimizer.zero_grad()
+                loss.backward()
+                nn.utils.clip_grad_norm_(self.actor_critic.parameters(), self.max_grad_norm)
+                self.optimizer.step()
 
         # Transformer encoder training
 
                 # Offline Pretraining
-                offline_transformer_loss = self.offline_pretraining(obs_tea_act_history_batch, mu_batch, aug_obs_batch, privileged_obs_batch, obs_history_batch, offline_transformer_loss)
+                # offline_transformer_loss = self.offline_pretraining(obs_tea_act_history_batch, mu_batch, aug_obs_batch, privileged_obs_batch, obs_history_batch, offline_transformer_loss)
 
                 # Anneal lambda_kld
-                lambda_kld = self.anneal_lambda(current_step, anneal_steps)
+                # lambda_kld = self.anneal_lambda(current_step, anneal_steps)
 
                 # Online Correction
                 # online_transformer_loss = self.online_correction(obs_std_act_history_batch, aug_obs_batch, privileged_obs_batch, obs_history_batch, lambda_kld, online_transformer_loss)

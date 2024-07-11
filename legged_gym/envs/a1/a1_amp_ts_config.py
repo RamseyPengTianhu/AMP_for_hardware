@@ -37,7 +37,7 @@ MOTION_FILES = glob.glob('datasets/mocap_motions/*')
 class A1AMPTSCfg( LeggedRobotCfg ):
 
     class env( LeggedRobotCfg.env ):
-        num_envs = 200
+        num_envs = 500
         include_history_steps = None  # Number of steps of history to include.
         num_observations = 48
         # num_observations = 45+6
@@ -49,7 +49,8 @@ class A1AMPTSCfg( LeggedRobotCfg ):
         reference_state_initialization = True
         reference_state_initialization_prob = 0.85
         amp_motion_files = MOTION_FILES
-        robot_type = 'biped'
+        # robot_type = 'biped'
+        robot_type = 'quad'
         # foot_type = 'non_point_foot'
         # num_actions = 14
         # num_policy_outputs = 14# 
@@ -58,44 +59,43 @@ class A1AMPTSCfg( LeggedRobotCfg ):
     
 
     class init_state( LeggedRobotCfg.init_state ):
-        # pos = [0.0, 0.0, 0.42] # x,y,z [m]
-        # default_joint_angles = { # = target angles [rad] when action = 0.0
-        #     'FL_hip_joint': 0.0,   # [rad]
-        #     'RL_hip_joint': 0.0,   # [rad]
-        #     'FR_hip_joint': 0.0 ,  # [rad]
-        #     'RR_hip_joint': 0.0,   # [rad]
-
-        #     'FL_thigh_joint': 0.9,     # [rad]
-        #     'RL_thigh_joint': 0.9,   # [rad]
-        #     'FR_thigh_joint': 0.9,     # [rad]
-        #     'RR_thigh_joint': 0.9,   # [rad]
-
-        #     'FL_calf_joint': -1.8,   # [rad]
-        #     'RL_calf_joint': -1.8,    # [rad]
-        #     'FR_calf_joint': -1.8,  # [rad]
-        #     'RR_calf_joint': -1.8,    # [rad]
-        # }
-        pos = [0.0, 0.0, 0.6] # x,y,z [m]
-        # 0.785402
-
+        pos = [0.0, 0.0, 0.42] # x,y,z [m]
         default_joint_angles = { # = target angles [rad] when action = 0.0
             'FL_hip_joint': 0.0,   # [rad]
             'RL_hip_joint': 0.0,   # [rad]
             'FR_hip_joint': 0.0 ,  # [rad]
             'RR_hip_joint': 0.0,   # [rad]
 
-            'FL_thigh_joint': 2,     # [rad]
-            'RL_thigh_joint': 2.35635,   # [rad]
-            'FR_thigh_joint': 2,     # [rad]
-            'RR_thigh_joint': 2.35635,   # [rad]
+            'FL_thigh_joint': 0.9,     # [rad]
+            'RL_thigh_joint': 0.9,   # [rad]
+            'FR_thigh_joint': 0.9,     # [rad]
+            'RR_thigh_joint': 0.9,   # [rad]
 
-            'FL_calf_joint': -1.5711,   # [rad]
-            'RL_calf_joint': -1.5711,    # [rad]
-            'FR_calf_joint': -1.5711,  # [rad]
-            'RR_calf_joint': -1.5711,    # [rad]
-            # 'RL_foot_joint': 0.785402,  # [rad]
-            # 'RR_foot_joint': 0.785402,    # [rad]
+            'FL_calf_joint': -1.8,   # [rad]
+            'RL_calf_joint': -1.8,    # [rad]
+            'FR_calf_joint': -1.8,  # [rad]
+            'RR_calf_joint': -1.8,    # [rad]
         }
+        # pos = [0.0, 0.0, 0.6] # x,y,z [m]
+
+        # default_joint_angles = { # = target angles [rad] when action = 0.0
+        #     'FL_hip_joint': 0.0,   # [rad]
+        #     'RL_hip_joint': 0.0,   # [rad]
+        #     'FR_hip_joint': 0.0 ,  # [rad]
+        #     'RR_hip_joint': 0.0,   # [rad]
+
+        #     'FL_thigh_joint': 2,     # [rad]
+        #     'RL_thigh_joint': 2.35635,   # [rad]
+        #     'FR_thigh_joint': 2,     # [rad]
+        #     'RR_thigh_joint': 2.35635,   # [rad]
+
+        #     'FL_calf_joint': -1.5711,   # [rad]
+        #     'RL_calf_joint': -1.5711,    # [rad]
+        #     'FR_calf_joint': -1.5711,  # [rad]
+        #     'RR_calf_joint': -1.5711,    # [rad]
+        #     # 'RL_foot_joint': 0.785402,  # [rad]
+        #     # 'RR_foot_joint': 0.785402,    # [rad]
+        # }
 
     class control( LeggedRobotCfg.control ):
         # PD Drive parameters:
@@ -134,20 +134,20 @@ class A1AMPTSCfg( LeggedRobotCfg ):
 
 
     class asset( LeggedRobotCfg.asset ):
-        file = '{LEGGED_GYM_ROOT_DIR}/resources/robots/a1/urdf/a1_biped.urdf'
-        # file = '{LEGGED_GYM_ROOT_DIR}/resources/robots/a1/urdf/a1.urdf'
+        # file = '{LEGGED_GYM_ROOT_DIR}/resources/robots/a1/urdf/a1_biped.urdf'
+        file = '{LEGGED_GYM_ROOT_DIR}/resources/robots/a1/urdf/a1.urdf'
         foot_name = "foot"
         shoulder_name = 'shoulder'
         penalize_contacts_on = ["base","thigh", "calf"]
-        # terminate_after_contacts_on = [
-        #     "base", "FL_calf", "FR_calf", "RL_calf", "RR_calf",
-        #     "FL_thigh", "FR_thigh", "RL_thigh", "RR_thigh"]
+        terminate_after_contacts_on = [
+            "base", "FL_calf", "FR_calf", "RL_calf", "RR_calf",
+            "FL_thigh", "FR_thigh", "RL_thigh", "RR_thigh"]
         # terminate_after_contacts_on = [
         #     "base", "FL_calf", "FR_calf", "RL_calf", "RR_calf","FL_hip", "FR_hip", "RL_hip", "RR_hip",
         #     "FL_thigh", "FR_thigh", "RL_thigh", "RR_thigh","FL_foot","FR_foot"]
-        terminate_after_contacts_on = [
-            "base", "FL_calf", "FR_calf", "RL_calf", "RR_calf","FL_hip", "FR_hip", "RL_hip", "RR_hip",
-            "FL_thigh", "FR_thigh", "RL_thigh", "RR_thigh","FL_foot","FR_foot"]
+        # terminate_after_contacts_on = [
+        #     "base", "FL_calf", "FR_calf", "RL_calf", "RR_calf","FL_hip", "FR_hip", "RL_hip", "RR_hip",
+        #     "FL_thigh", "FR_thigh", "RL_thigh", "RR_thigh","FL_foot","FR_foot"]
         self_collisions = 0 # 1 to disable, 0 to enable...bitwise filter
 
 
@@ -211,47 +211,47 @@ class A1AMPTSCfg( LeggedRobotCfg ):
         soft_dof_pos_limit = 0.9
         base_height_target = 0.25
         class scales( LeggedRobotCfg.rewards.scales ):
-            # termination = -0.3
-            # termination = 0.0
-            tracking_lin_vel = 1.5 * 1. / (.005 * 6)
-            tracking_ang_vel = 0.5 * 1. / (.005 * 6)
-            # lin_vel_z = 1
-            lin_vel_z = 0
-            ang_vel_xy = 0.0
-            orientation = 0.0
-            torques = -1e-4
-            dof_vel = 0.0
-            dof_acc = -2.5e-7
-            base_height = 0.0 
-            feet_air_time =  0.5
-            # collision = -0.1
-            collision = -0.1
-
-            feet_stumble = 0.0 
-            # action_rate = 0.0
-            # action_rate = -0.01
-            stand_still = 0.0
-            dof_pos_limits = -1.0
-            # vel_smoothness = -0.1
-            target_smoothness = -0.01
-            arm_dof_pos = -2.5e-5
-            # target_smoothness = -0.001
-            # termination = 0.0
+           
             # tracking_lin_vel = 1.5 * 1. / (.005 * 6)
             # tracking_ang_vel = 0.5 * 1. / (.005 * 6)
-            # lin_vel_z = 0.0
+            # # lin_vel_z = 1
+            # lin_vel_z = 0
             # ang_vel_xy = 0.0
             # orientation = 0.0
-            # torques = 0.0
+            # torques = -1e-4
             # dof_vel = 0.0
-            # dof_acc = 0.0
-            # base_height = 0.0 
-            # feet_air_time =  0.0
-            # collision = 0.0
+            # dof_acc = -2.5e-7
+            # base_height = -0.001 
+            # feet_air_time =  0.5
+            # # collision = -0.1
+            # collision = -0.1
+
             # feet_stumble = 0.0 
-            # action_rate = 0.0
+            # # action_rate = 0.0
+            # # action_rate = -0.01
             # stand_still = 0.0
-            # dof_pos_limits = 0.0
+            # dof_pos_limits = -1.0
+            # # vel_smoothness = -0.1
+            # target_smoothness = -0.01
+            # # arm_dof_pos = -2.5e-5
+            
+            target_smoothness = -0.001
+            termination = 0.0
+            tracking_lin_vel = 1.5 * 1. / (.005 * 6)
+            tracking_ang_vel = 0.5 * 1. / (.005 * 6)
+            lin_vel_z = 0.0
+            ang_vel_xy = 0.0
+            orientation = 0.0
+            torques = 0.0
+            dof_vel = 0.0
+            dof_acc = 0.0
+            base_height = 0.0 
+            feet_air_time =  0.0
+            collision = 0.0
+            feet_stumble = 0.0 
+            action_rate = 0.0
+            stand_still = 0.0
+            dof_pos_limits = 0.0
 
         tracking_sigma = 0.25  # tracking reward = exp(-error^2/sigma)
         
@@ -268,13 +268,10 @@ class A1AMPTSCfg( LeggedRobotCfg ):
         gamepad_commands = True
 
         class ranges:
-            # lin_vel_x = [-1.0, 2.0] # min max [m/s]
-            lin_vel_x = [1.0,1.0] # min max [m/s]
-            # lin_vel_y = [-0.01, 0.01]   # min max [m/s]
-            lin_vel_y = [0, 0]   # min max [m/s]
-            ang_vel_yaw = [0.0,0.0]    # min max [rad/s]
+            lin_vel_x = [-1.0, 2.0] # min max [m/s]
+            lin_vel_y = [-0.3, 0.3]   # min max [m/s]
+            ang_vel_yaw = [-1.57, 1.57]    # min max [rad/s]
             heading = [-3.14, 3.14]
-            # heading = [0.0, 0.0]
 
 class A1AMPTSCfgPPO( LeggedRobotCfgPPO ):
     runner_class_name = 'AMPTSOnPolicyRunner'

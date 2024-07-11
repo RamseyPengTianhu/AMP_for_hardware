@@ -55,19 +55,23 @@ from legged_gym.utils.isaacgym_utils import compute_meshes_normals, Point, get_e
 from .legged_robot_config import LeggedRobotCfg
 from rsl_rl.datasets.motion_loader import AMPLoader
 
-
-# COM_OFFSET = torch.tensor([0.012731, 0.002186, 0.000515])
-# HIP_OFFSETS = torch.tensor([
-#     [0.183, 0.047, 0.],
-#     [0.183, -0.047, 0.],
-#     [-0.183, 0.047, 0.],
-#     [-0.183, -0.047, 0.]]) + COM_OFFSET
-COM_OFFSET = torch.tensor([ 0.000515, 0.002186, 0.012731])
+# Quadruped version
+COM_OFFSET = torch.tensor([0.012731, 0.002186, 0.000515])
 HIP_OFFSETS = torch.tensor([
-    [0, 0.0512, 0.1805],
-    [0, -0.0512, 0.1805],
-    [0, 0.0512, -0.1805 ],
-    [0, -0.0512, -0.1805]]) + COM_OFFSET
+    [0.183, 0.047, 0.],
+    [0.183, -0.047, 0.],
+    [-0.183, 0.047, 0.],
+    [-0.183, -0.047, 0.]]) + COM_OFFSET
+
+
+
+# Biped version
+# COM_OFFSET = torch.tensor([ 0.000515, 0.002186, 0.012731])
+# HIP_OFFSETS = torch.tensor([
+#     [0, 0.0512, 0.1805],
+#     [0, -0.0512, 0.1805],
+#     [0, 0.0512, -0.1805 ],
+#     [0, -0.0512, -0.1805]]) + COM_OFFSET
 
 
 
@@ -154,9 +158,7 @@ class LeggedRobot(BaseTask):
             policy_obs = self.obs_buf
         if self.privileged_obs_buf is not None:
             self.privileged_obs_buf = torch.clip(self.privileged_obs_buf, -clip_obs, clip_obs)
-        # terrain_obs_buf = self.get_terrain_observations()
-        # if self.cfg.terrain.measure_heights_in_sim:
-        #     terrain_obs_buf = torch.clip(terrain_obs_buf, -clip_obs, clip_obs)
+        
         
         return policy_obs, self.privileged_obs_buf, self.rew_buf, self.reset_buf, self.extras, reset_env_ids, terminal_amp_states
 
@@ -298,8 +300,8 @@ class LeggedRobot(BaseTask):
         # reset robot states
         if self.cfg.env.reference_state_initialization:
             frames = self.amp_loader.get_full_frame_batch(len(env_ids))
-            # self._reset_dofs_amp(env_ids, frames)
-            self._reset_dofs(env_ids)
+            self._reset_dofs_amp(env_ids, frames)
+            # self._reset_dofs(env_ids)
             self._reset_root_states_amp(env_ids, frames)
             
         else:
@@ -1372,9 +1374,7 @@ class LeggedRobot(BaseTask):
         return torch.stack([off_x, off_y, off_z], dim=-1)
 
     def foot_positions_in_base_frame(self, foot_angles):
-        # foot_positions = torch.zeros_like(foot_angles[:,:12])
         foot_positions = torch.zeros_like(foot_angles)
-        # print(foot_positions.shape)
         
         for i in range(4):
             foot_positions[:, i * 3:i * 3 + 3].copy_(
