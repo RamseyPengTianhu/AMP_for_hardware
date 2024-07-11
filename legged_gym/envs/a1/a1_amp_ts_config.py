@@ -37,7 +37,7 @@ MOTION_FILES = glob.glob('datasets/mocap_motions/*')
 class A1AMPTSCfg( LeggedRobotCfg ):
 
     class env( LeggedRobotCfg.env ):
-        num_envs = 750
+        num_envs = 200
         include_history_steps = None  # Number of steps of history to include.
         num_observations = 48
         # num_observations = 45+6
@@ -113,7 +113,7 @@ class A1AMPTSCfg( LeggedRobotCfg ):
 
 
     class terrain( LeggedRobotCfg.terrain ):
-        mesh_type = 'trimesh'  # none, plane, heightfield or trimesh
+        mesh_type = 'plane'  # none, plane, heightfield or trimesh
         measure_heights = False
         measure_heights_in_sim = True
         

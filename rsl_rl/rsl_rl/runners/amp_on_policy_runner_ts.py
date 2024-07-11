@@ -195,6 +195,8 @@ class AMPTSOnPolicyRunner:
                         self.student_action, self.last_dones, self.obs_buffer, 
                         self.dones_buffer, self.num_obs_sequence, self.context_window
                     )
+                    # self.alg.load_pretrained_policy(model_path)
+                    # pre_trained_inference_policy = self.alg.get_inference_policy()
                     obs_dict, rewards, dones, infos, reset_env_ids, terminal_amp_states = self.env.step(actions)
                     obs, privileged_obs, obs_history = obs_dict["obs"], obs_dict["privileged_obs"], obs_dict[
                         "obs_history"]
@@ -370,22 +372,34 @@ class AMPTSOnPolicyRunner:
         self.current_learning_iteration = loaded_dict['iter']
         return loaded_dict['infos']
 
-    def get_inference_policy(self, device=None):
+    def get_inference_policy(self, mode='inference', device=None):
         self.alg.actor_critic.eval() # switch to evaluation mode (dropout for example)
         if device is not None:
             self.alg.actor_critic.to(device)
-        return self.alg.actor_critic.act_inference
-        # return self.alg.actor_critic.act_inference_transformer
+        if mode == 'inference':
+            return self.alg.actor_critic.act_inference
+        elif mode == 'expert':
+            return self.alg.actor_critic.act_expert
+        elif mode == 'transformer':
+            return self.alg.actor_critic.act_inference_transformer
+        else:
+            # Raise an error if an invalid mode is provided
+            raise ValueError(f"Invalid mode '{mode}'. Valid options are 'inference', 'expert', or 'transformer'.")
 
-    def get_observation_action_history(self, obs, act, device=None):
-        # self.observation_action_history_reset()
-        obs_act_pair = torch.cat((obs,act),dim = -1)
-
-        self.obs_act_history_play =torch.cat((self.obs_act_history_play[:,obs_act_pair.shape[1]:], obs_act_pair), dim=-1)
-        self.obs_act_history_play = self.obs_act_history_play[:,-self.context_window*obs_act_pair.shape[1]:]
+    def get_observation_action_history(self, obs, act, state='init', device=None):
+        obs_act_pair = torch.cat((obs, act), dim=-1)
+        if state == 'init':
+            # Initialize obs_act_history with the initial observation and action
+            self.obs_act_history_play = torch.cat([obs_act_pair] * self.context_window, dim=-1)
+        else:
+            self.obs_act_history_play = torch.cat((self.obs_act_history_play[:, obs_act_pair.shape[1]:], obs_act_pair), dim=-1)
+            self.obs_act_history_play = self.obs_act_history_play[:, -self.context_window * obs_act_pair.shape[1]:]
+        
         if device is not None:
             self.alg.actor_critic.to(device)
+        
         return self.obs_act_history_play
+    
     def observation_action_history_reset(self):
         self.obs_act_buffer[:, :] = 0
        

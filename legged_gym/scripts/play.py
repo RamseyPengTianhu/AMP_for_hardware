@@ -16,6 +16,8 @@ from scipy.spatial.transform import Rotation as R
 
 import numpy as np
 import torch
+import torch.nn.functional as F
+
 
 
 def configure_environment(args):
@@ -26,7 +28,7 @@ def configure_environment(args):
 
     # Override some parameters for testing
 
-    env_cfg.env.num_envs = min(env_cfg.env.num_envs, 20)
+    env_cfg.env.num_envs = min(env_cfg.env.num_envs, 1)
 
     env_cfg.terrain.num_rows = 5
 
@@ -292,8 +294,15 @@ def save_states_to_csv(state_log, dt, output_dir):
 
 
 def play(args):
-
+    print('args:', args)
     env_cfg, train_cfg = configure_environment(args)
+    print('env_cfg:',env_cfg)
+    # mode = 'inference'
+    # mode = 'expert'
+    mode = 'expert'
+    expert_mode = 'expert'
+    inference_mode = 'inference'
+    transformer_mode = 'transformer'
 
     env, obs, privileged_obs, obs_history, act = initialize_environment(args, env_cfg)
 
@@ -302,18 +311,25 @@ def play(args):
     train_cfg.runner.resume = True
 
     ppo_runner, train_cfg = task_registry.make_alg_runner(env=env, name=args.task, args=args, train_cfg=train_cfg)
+    print('ppo_runner:',ppo_runner)
     ppo_runner.observation_action_history_reset()
 
-    obs_act_history = ppo_runner.get_observation_action_history(obs, act)
+    # Initialize obs_act_history with the initial observation and action
+    obs_act_history = ppo_runner.get_observation_action_history(obs, act, state='init', device=env.device)
+
+    print('obs_act_history:',obs_act_history.view(16,60))
     
 
-    policy = ppo_runner.get_inference_policy(device=env.device)
+    policy = ppo_runner.get_inference_policy(mode,device=env.device)
+    expert_policy = ppo_runner.get_inference_policy(expert_mode,device=env.device)
+    inference_policy = ppo_runner.get_inference_policy(inference_mode,device=env.device)
+    transformer_policy = ppo_runner.get_inference_policy(transformer_mode,device=env.device)
 
     export_policy_if_needed(ppo_runner, train_cfg)
 
     logger = Logger(env.dt)
 
-    robot_index = 7
+    robot_index = 0
 
     joint_index = 7
 
@@ -355,6 +371,7 @@ def play(args):
     weight = mass * gravity
 
     time_step = env.dt
+    print('time_step:',time_step)
 
     back_leg_indices = [6, 7, 8, 9, 10, 11]  # Adjust these indices based on your robot's configuration
 
@@ -399,6 +416,29 @@ def play(args):
 
     for i in range(1 * int(env.max_episode_length)):
 
+
+        # Generate actions based on the current observations and action history
+
+        if mode == 'transformer':
+            actions = policy(obs,obs_act_history)
+        elif mode == 'inference':
+            actions = policy(obs,obs_history)
+        elif mode == 'expert':
+            actions = policy(obs, privileged_obs)
+        
+        expert_actions = expert_policy(obs, privileged_obs)
+        transformer_actions = transformer_policy(obs, obs_act_history)
+        inference_actions = inference_policy(obs, obs_history)
+
+
+
+
+        # Update observation-action history with the new actions
+        obs_act_history = ppo_runner.get_observation_action_history(obs, actions, state='update', device=env.device)
+
+        obs_act_history_transform = obs_act_history.view(16,60)
+
+
         # Apply sinusoidal force periodically
         if i % force_interval == 0:
             # Define your force and torque vectors (x, y, z)
@@ -418,7 +458,7 @@ def play(args):
             t = (i - force_start_step) * env.dt  # Current time in the force duration
             force_magnitude = target_force_amplitude * np.sin(np.pi * t / force_time)
             # Apply the sinusoidal force
-            world_force_vector = apply_sinusoidal_force(env, robot_index, local_force_vector, local_torque_vector, force_magnitude)
+            # world_force_vector = apply_sinusoidal_force(env, robot_index, local_force_vector, local_torque_vector, force_magnitude)
 
             # if i == force_start_step + mid_force_duration_steps:
             #     draw_force_vector(env, robot_index, world_force_vector, scale_factor=0.5, arrow_thickness=0.02, arrow_head_length=0.1)
@@ -430,14 +470,9 @@ def play(args):
         if force_start_step is not None and i >= force_start_step + force_duration_steps:
             force_start_step = None
 
-        # Generate actions based on the current observations and action history
+            
 
-        actions = policy(obs,obs_history)
-        # actions = policy(obs,obs_act_history)
-
-        # Update observation-action history with the new actions
-
-        obs_act_history = ppo_runner.get_observation_action_history(obs, actions)
+        
     
 
         obs_dict, rewards, dones, infos, reset_env_ids, terminal_amp_states = env.step(actions)

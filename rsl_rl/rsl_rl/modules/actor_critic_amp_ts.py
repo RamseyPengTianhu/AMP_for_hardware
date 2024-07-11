@@ -190,10 +190,14 @@ class ActorCriticAmpTs(nn.Module):
         # LSTM Encoder
         self.memory = Memory(num_obs, num_env = num_env, type=rnn_type, num_layers=rnn_num_layers, hidden_size=rnn_hidden_size, device = self.device)
 
+       
+
 
         # self.Transformer_encoder = CausalTransformer(num_obs_history=45, d_model=256, nhead=8, num_encoder_layers=3, dim_feedforward=256, privileged_encoder_latent_dims=39, terrain_encoder_latent_dims=187)
-        # self.Transformer_encoder = CompleteModel(num_obs, transformer_dim, transformer_heads, transformer_layers, mlp_ratio, obs_embed_hidden_sizes, action_pred_hidden_sizes, context_window, num_actions).to(device)
-        # self.add_module(f"Transformer_encoder", self.Transformer_encoder)
+        
+        self.Transformer_encoder = CompleteModel(num_obs, transformer_dim, transformer_heads, transformer_layers, mlp_ratio, obs_embed_hidden_sizes, action_pred_hidden_sizes, context_window, num_actions).to(device)
+        self.add_module(f"Transformer_encoder", self.Transformer_encoder)
+
 
    
 
@@ -241,6 +245,13 @@ class ActorCriticAmpTs(nn.Module):
                 critic_layers.append(activation)
         self.critic = nn.Sequential(*critic_layers)
 
+
+        # Policy_copy
+    
+        self.actor_copy = nn.Sequential(*actor_layers)
+        self.add_module(f"actor_copy", self.actor_copy)
+
+
         print(f"Privileged Factor Encoder: {self.privileged_factor_encoder}")
         print(f"Terrain Factor Encoder: {self.terrain_factor_encoder}")
         # print(f"LSTM Encoder: {self.lstm_encoder}")
@@ -248,6 +259,8 @@ class ActorCriticAmpTs(nn.Module):
         # print(f"Adaptation Module: {self.adaptation_module}")
         print(f"Actor MLP: {self.actor}")
         print(f"Critic MLP: {self.critic}")
+        print(f"Actor_copy MLP: {self.actor_copy}")
+
         # print(f"Transformer encoder: {self.Transformer_encoder}")
 
         # Action noise
@@ -356,6 +369,29 @@ class ActorCriticAmpTs(nn.Module):
 
         self.distribution = Normal(mean, mean * 0. + self.std)
 
+
+    def update_distribution_existing(self, observations, observations_history):
+        """
+        Updates the action distribution based on the observations and privileged observations.
+
+        Args:
+            observations (Tensor): The current observations.
+            privileged_observations (Tensor): The privileged observations.
+
+        Returns:
+            None
+        """
+
+
+        
+       
+        mean = self.actor(torch.cat((observations, observations_history), dim=-1))
+
+
+
+        self.distribution = Normal(mean, mean * 0. + self.std)
+    
+
     def act(self, observations, privileged_observations, **kwargs):
         """
         Samples actions from the action distribution.
@@ -395,13 +431,15 @@ class ActorCriticAmpTs(nn.Module):
         Returns:
             Tensor: The expert actions.
         """
+
+        privileged_latent = self.privileged_factor_encoder(privileged_observations[:,:39])
+        
         if self.measure_heights_in_sim:
-            privileged_latent = self.privileged_factor_encoder(privileged_observations[:,39:])
-            terrain_latent = self.terrain_factor_encoder(privileged_observations[:,:39])
+            terrain_latent = self.terrain_factor_encoder(privileged_observations[:,39:])
             teacher_latent = torch.cat((privileged_latent,terrain_latent),dim=-1)
         else:
-            privileged_latent = self.privileged_factor_encoder(privileged_observations)
             teacher_latent = torch.cat((privileged_latent,),dim=-1)
+       
         actions_mean = self.actor(torch.cat((observations, teacher_latent), dim=-1))
         policy_info["teacher_latents"] = teacher_latent.detach().cpu().numpy()
         return actions_mean
@@ -584,7 +622,9 @@ class PositionalEncoding(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = x + self.pe[:x.size(0), :]
-        return self.dropout(x)
+        x = self.dropout(x)
+        check_for_nans_infs(x, "Positional Encoding Output")
+        return x
 
 class ObservationActionEmbedding(nn.Module):
     def __init__(self, input_dim: int, hidden_sizes: list, output_dim: int):
@@ -594,37 +634,74 @@ class ObservationActionEmbedding(nn.Module):
             layers.append(nn.Linear(in_dim, out_dim))
             layers.append(nn.ReLU())
         self.network = nn.Sequential(*layers)
+        self.apply(self.init_weights)
+
+    def init_weights(self, m):
+        if isinstance(m, nn.Linear):
+            nn.init.kaiming_uniform_(m.weight, nonlinearity='relu')
+            if m.bias is not None:
+                nn.init.constant_(m.bias, 0)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.network(x)
+        check_for_nans_infs(x, "Input to ObservationActionEmbedding")
+        # Clip the input values to a reasonable range
+        x = torch.clamp(x, min=-10, max=10)
+        check_for_nans_infs(x, "Clipped Input to ObservationActionEmbedding")
+        
+        x = self.network(x)
+        check_for_nans_infs(x, "ObservationActionEmbedding Output")
+        return x
 
 class PositionwiseFeedForward(nn.Module):
     def __init__(self, d_model: int, d_ff: int, dropout: float = 0.1):
         super(PositionwiseFeedForward, self).__init__()
         self.linear1 = nn.Linear(d_model, d_ff)
-        self.linear2 = nn.Linear(d_ff, d_model)
+        self.linear2 = nn.Linear(d_ff, d.model)
         self.dropout = nn.Dropout(dropout)
         self.activation = nn.ReLU()  # or nn.GELU()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.linear2(self.dropout(self.activation(self.linear1(x))))
+        x = self.activation(self.linear1(x))
+        x = self.dropout(x)
+        x = self.linear2(x)
+        check_for_nans_infs(x, "PositionwiseFeedForward Output")
+        return x
 
 class CausalTransformer(nn.Module):
-    def __init__(self, d_model: int, nhead: int, num_layers: int, mlp_ratio: int, dropout: float = 0.1):
+    def __init__(self, d_model=512, nhead=8, num_encoder_layers=6, num_decoder_layers=6, dim_feedforward=2048, dropout=0.1, activation="relu"):
         super(CausalTransformer, self).__init__()
-        self.positional_encoding = PositionalEncoding(d_model, dropout)
-        dim_feedforward = int(d_model * mlp_ratio)
-        encoder_layer = nn.TransformerEncoderLayer(d_model, nhead, dim_feedforward, dropout)
-        self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers)
         self.d_model = d_model
+        self.positional_encoding = PositionalEncoding(d_model, dropout)
+        self.transformer = nn.Transformer(
+            d_model=d_model,
+            nhead=nhead,
+            num_encoder_layers=num_encoder_layers,
+            num_decoder_layers=num_decoder_layers,
+            dim_feedforward=dim_feedforward,
+            dropout=dropout,
+            activation=activation,
+        )
 
-    def forward(self, src: torch.Tensor) -> torch.Tensor:
-        src = src * math.sqrt(self.d_model)
-        src = self.positional_encoding(src)
-        mask = generate_square_subsequent_mask(src.size(0), src.device)
-        output = self.transformer_encoder(src, mask)
+    
+    def forward(self, src, src_mask=None, src_key_padding_mask=None):
+        src = self.positional_encoding(src * math.sqrt(self.d_model))
+
+        # Generate the square subsequent mask for causal attention
+        if src_mask is None:
+            src_mask = self.transformer.generate_square_subsequent_mask(src.size(0)).to(src.device)
+
+        output = self.transformer(
+            src, src,  # Pass src as both src and tgt
+            src_mask=src_mask, tgt_mask=src_mask,
+            src_key_padding_mask=src_key_padding_mask,
+            tgt_key_padding_mask=src_key_padding_mask,
+            src_is_causal=True,  # Apply causal mask to src
+            tgt_is_causal=True   # Apply causal mask to tgt
+        )
+
+        check_for_nans_infs(output, "After transformer encoder")
         return output
-
+    
 class ActionPredictionMLP(nn.Module):
     def __init__(self, input_dim: int, hidden_sizes: list, output_dim: int):
         super(ActionPredictionMLP, self).__init__()
@@ -637,15 +714,53 @@ class ActionPredictionMLP(nn.Module):
         self.network = nn.Sequential(*layers)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.network(x)
+        x = self.network(x)
+        check_for_nans_infs(x, "ActionPredictionMLP Output")
+        return x
 
 class CompleteModel(nn.Module):
-    def __init__(self, num_obs: int, transformer_dim: int, transformer_heads: int, transformer_layers: int, transformer_ff_dim: int, obs_embed_hidden_sizes: list, action_pred_hidden_sizes: list, context_window: int, num_actions: int):
+    def __init__(self, num_obs: int, transformer_dim: int, transformer_heads: int, transformer_layers: int, mlp_ratio: int, obs_embed_hidden_sizes: list, action_pred_hidden_sizes: list, context_window: int, num_actions: int, activation=nn.ELU()):
         super(CompleteModel, self).__init__()
         num_obs_act_pair = num_obs + num_actions
-        self.embedding = ObservationActionEmbedding(num_obs_act_pair, obs_embed_hidden_sizes, transformer_dim)
-        self.transformer = CausalTransformer(transformer_dim, transformer_heads, transformer_layers, transformer_ff_dim)
-        self.action_prediction = ActionPredictionMLP(transformer_dim, action_pred_hidden_sizes, num_actions)
+        
+        # ObservationActionEmbedding module
+        embedding_module_layers = []
+        embedding_module_layers.append(nn.Linear(num_obs_act_pair, obs_embed_hidden_sizes[0]))
+        embedding_module_layers.append(activation)
+        for l in range(len(obs_embed_hidden_sizes)):
+            if l == len(obs_embed_hidden_sizes) - 1:
+                embedding_module_layers.append(nn.Linear(obs_embed_hidden_sizes[l], transformer_dim))
+            else:
+                embedding_module_layers.append(nn.Linear(obs_embed_hidden_sizes[l], obs_embed_hidden_sizes[l + 1]))
+                embedding_module_layers.append(activation)
+        self.embedding_module = nn.Sequential(*embedding_module_layers)
+        self.add_module(f"embedding_module", self.embedding_module)
+
+        # Transformer module
+        self.transformer = CausalTransformer(
+            d_model=transformer_dim,
+            nhead=transformer_heads,
+            num_encoder_layers=transformer_layers,
+            num_decoder_layers=transformer_layers,
+            dim_feedforward=int(transformer_dim * mlp_ratio),
+            dropout=0.1,
+            activation=activation
+        )
+        self.add_module(f"Transformer_encoder", self.transformer)
+        
+        # ActionPrediction module
+        transformer_mlp_decoder_layers = []
+        transformer_mlp_decoder_layers.append(nn.Linear(transformer_dim, action_pred_hidden_sizes[0]))
+        transformer_mlp_decoder_layers.append(activation)
+        for l in range(len(action_pred_hidden_sizes)):
+            if l == len(action_pred_hidden_sizes) - 1:
+                transformer_mlp_decoder_layers.append(nn.Linear(action_pred_hidden_sizes[l], num_actions))
+            else:
+                transformer_mlp_decoder_layers.append(nn.Linear(action_pred_hidden_sizes[l], action_pred_hidden_sizes[l + 1]))
+                transformer_mlp_decoder_layers.append(activation)
+        self.action_prediction = nn.Sequential(*transformer_mlp_decoder_layers)
+        self.add_module(f"transformer_mlp_decoder_module", self.action_prediction)
+
         self.context_window = context_window
         self.num_actions = num_actions
 
@@ -654,24 +769,30 @@ class CompleteModel(nn.Module):
         obs_action_dim = int(num_obs_act_history / self.context_window)
 
         # Embed observation-action pairs
-        embedded_obs_action = self.embedding(obs_action_pairs.view(-1, obs_action_dim)).view(batch_size, self.context_window, -1)
-        
+        check_for_nans_infs(obs_action_pairs, "Input to embedding")
+        embedded_obs_action = self.embedding_module(obs_action_pairs.view(-1, obs_action_dim)).view(batch_size, self.context_window, -1)
+        check_for_nans_infs(embedded_obs_action, "After embedding")
+
         # Pass through transformer
         transformer_output = self.transformer(embedded_obs_action.permute(1, 0, 2))  # (context_window, batch_size, transformer_dim)
         
         # Predict actions
-        action_predictions = self.action_prediction(transformer_output[-1, :, :])  # Use the last token's output for prediction
+        action_predictions = self.action_prediction(transformer_output[-1, :, :])
+        check_for_nans_infs(action_predictions, "After action prediction")
         
         return action_predictions
 
-def generate_square_subsequent_mask(sz: int, device: str = "cpu") -> torch.Tensor:
-    mask = (torch.triu(torch.ones(sz, sz)) == 1).transpose(0, 1)
-    mask = (
-        mask.float()
-        .masked_fill(mask == 0, float('-inf'))
-        .masked_fill(mask == 1, float(0.0))
-    ).to(device=device)
-    return mask
+
+
+def check_for_nans_infs(tensor, name,):
+    if torch.isnan(tensor).any():
+        print(f"NaNs found in {name}")
+        print(f" {name}:",tensor)
+        assert False, f"NaNs found in {name}"
+    if torch.isinf(tensor).any():
+        print(f"Infs found in {name}")
+        print(f" {name}:",tensor)
+        assert False, f"Infs found in {name}"
 
 class TCNBlock(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size, stride, dilation, padding):
