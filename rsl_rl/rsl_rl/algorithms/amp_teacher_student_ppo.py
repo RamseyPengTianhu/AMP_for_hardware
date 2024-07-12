@@ -658,7 +658,7 @@ class AMPTSPPO:
                 # offline_transformer_loss = self.offline_pretraining(obs_tea_act_history_batch, mu_batch)
 
                 # Anneal lambda_kld
-                # lambda_kld = self.anneal_lambda(current_step, anneal_steps)
+                lambda_kld = self.anneal_lambda(current_step, anneal_steps)
 
                 # Online Correction
                 # online_transformer_loss = self.online_correction(obs_std_act_history_batch, mu_batch, lambda_kld)
