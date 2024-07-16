@@ -37,9 +37,11 @@ from torch.distributions import Normal
 from torch.nn.modules import rnn
 from typing import Optional,Tuple
 
+
 from rsl_rl.utils import unpad_trajectories
 import math
-
+import torch.autograd as autograd
+autograd.set_detect_anomaly(True)
 
 
 
@@ -130,7 +132,19 @@ class ActorCriticAmpTs(nn.Module):
 
         activation = get_activation(activation)
         activation_output = get_activation(activation_output)
+
+        # Define attributes
+        self.num_obs = num_obs
+        self.num_privileged_obs = num_privileged_obs
+        self.num_terrain_obs = num_terrain_obs
+        self.num_obs_history = num_obs_history
+        self.num_obs_act_history = num_obs_act_history
+        self.num_actions = num_actions
+        self.num_env = num_env
+        self.context_window = context_window
         self.device = device
+
+
         self.measure_heights_in_sim= measure_heights_in_sim
         if self.measure_heights_in_sim:
             teacher_latent_dim = int(torch.tensor(privileged_encoder_latent_dims + terrain_encoder_latent_dims))#8 + 16 = 24
@@ -195,8 +209,10 @@ class ActorCriticAmpTs(nn.Module):
 
         # self.Transformer_encoder = CausalTransformer(num_obs_history=45, d_model=256, nhead=8, num_encoder_layers=3, dim_feedforward=256, privileged_encoder_latent_dims=39, terrain_encoder_latent_dims=187)
         
-        self.Transformer_encoder = CompleteModel(num_obs, transformer_dim, transformer_heads, transformer_layers, mlp_ratio, obs_embed_hidden_sizes, action_pred_hidden_sizes, context_window, num_actions).to(device)
+        self.Transformer_encoder = CompleteModel(num_obs, transformer_dim, transformer_heads, transformer_layers, mlp_ratio, obs_embed_hidden_sizes, action_pred_hidden_sizes, context_window, num_actions, num_actions).to(device)
         self.add_module(f"Transformer_encoder", self.Transformer_encoder)
+        self.Transformer_critic = CompleteModel(num_obs, transformer_dim, transformer_heads, transformer_layers, mlp_ratio, obs_embed_hidden_sizes, action_pred_hidden_sizes, context_window, num_actions, 1).to(device)
+        self.add_module(f"Transformer_critic", self.Transformer_critic)
 
 
    
@@ -246,11 +262,6 @@ class ActorCriticAmpTs(nn.Module):
         self.critic = nn.Sequential(*critic_layers)
 
 
-        # Policy_copy
-    
-        self.actor_copy = nn.Sequential(*actor_layers)
-        self.add_module(f"actor_copy", self.actor_copy)
-
 
         print(f"Privileged Factor Encoder: {self.privileged_factor_encoder}")
         print(f"Terrain Factor Encoder: {self.terrain_factor_encoder}")
@@ -259,7 +270,6 @@ class ActorCriticAmpTs(nn.Module):
         # print(f"Adaptation Module: {self.adaptation_module}")
         print(f"Actor MLP: {self.actor}")
         print(f"Critic MLP: {self.critic}")
-        print(f"Actor_copy MLP: {self.actor_copy}")
 
         # print(f"Transformer encoder: {self.Transformer_encoder}")
 
@@ -343,7 +353,7 @@ class ActorCriticAmpTs(nn.Module):
         """
         return self.distribution.entropy().sum(dim=-1)
 
-    def update_distribution(self, observations, privileged_observations):
+    def update_distribution(self, observations, privileged_observations, observations_actions, actor_mode = 'mlp'):
         """
         Updates the action distribution based on the observations and privileged observations.
 
@@ -355,15 +365,19 @@ class ActorCriticAmpTs(nn.Module):
             None
         """
 
+        if actor_mode == 'mlp':
+            privileged_latent = self.privileged_factor_encoder(privileged_observations[:,:39])
+            
+            if self.measure_heights_in_sim:
+                terrain_latent = self.terrain_factor_encoder(privileged_observations[:,39:])
+                teacher_latent = torch.cat((privileged_latent,terrain_latent),dim=-1)
+            else:
+                teacher_latent = torch.cat((privileged_latent,),dim=-1)
+            mean = self.actor(torch.cat((observations, teacher_latent), dim=-1))
+        elif actor_mode == 'transformer':
+            # print('You are using transformer as actor!!!')
+            mean = self.Transformer_encoder(observations_actions)
 
-        privileged_latent = self.privileged_factor_encoder(privileged_observations[:,:39])
-        
-        if self.measure_heights_in_sim:
-            terrain_latent = self.terrain_factor_encoder(privileged_observations[:,39:])
-            teacher_latent = torch.cat((privileged_latent,terrain_latent),dim=-1)
-        else:
-            teacher_latent = torch.cat((privileged_latent,),dim=-1)
-        mean = self.actor(torch.cat((observations, teacher_latent), dim=-1))
 
 
 
@@ -392,7 +406,7 @@ class ActorCriticAmpTs(nn.Module):
         self.distribution = Normal(mean, mean * 0. + self.std)
     
 
-    def act(self, observations, privileged_observations, **kwargs):
+    def act(self, observations, privileged_observations,  observations_actions, actor_mode = 'mlp', **kwargs):
         """
         Samples actions from the action distribution.
 
@@ -404,7 +418,7 @@ class ActorCriticAmpTs(nn.Module):
         Returns:
             Tensor: The sampled actions.
         """
-        self.update_distribution(observations, privileged_observations)
+        self.update_distribution(observations, privileged_observations, observations_actions, actor_mode)
         return self.distribution.sample()
 
     def get_actions_log_prob(self, actions):
@@ -439,10 +453,12 @@ class ActorCriticAmpTs(nn.Module):
             teacher_latent = torch.cat((privileged_latent,terrain_latent),dim=-1)
         else:
             teacher_latent = torch.cat((privileged_latent,),dim=-1)
-       
         actions_mean = self.actor(torch.cat((observations, teacher_latent), dim=-1))
         policy_info["teacher_latents"] = teacher_latent.detach().cpu().numpy()
-        return actions_mean
+        distribution = Normal(actions_mean, actions_mean * 0. + self.std)
+        action_std = distribution.stddev
+
+        return actions_mean, action_std
 
     # def act_inference(self, observations, observation_history, privileged_observations=None, policy_info={}):
     #     """
@@ -490,10 +506,12 @@ class ActorCriticAmpTs(nn.Module):
         student_latent = self.adaptation_module(observation_history)
         actions_mean = self.actor(torch.cat((observations, student_latent), dim=-1))
         policy_info["latents"] = student_latent.detach().cpu().numpy()
+        distribution = Normal(actions_mean, actions_mean * 0. + self.std)
+        action_std = distribution.stddev
 
 
 
-        return actions_mean
+        return actions_mean, action_std
     
 
     def act_inference_transformer(self, observations, observation_action_history, privileged_observations=None, hidden_state = None, policy_info={}):
@@ -511,10 +529,16 @@ class ActorCriticAmpTs(nn.Module):
         """
 
         actions_mean = self.Transformer_encoder(observation_action_history)
+        distribution = Normal(actions_mean, actions_mean * 0. + self.std)
+        action_std = distribution.stddev
 
-        return actions_mean
 
-    def evaluate(self, critic_observations, privileged_observations, **kwargs):
+
+        
+
+        return actions_mean, action_std
+
+    def evaluate(self, critic_observations, privileged_observations, observations_actions, critic_mode = 'mlp', **kwargs):
         """
         Computes the value estimates of critic observations.
 
@@ -526,14 +550,19 @@ class ActorCriticAmpTs(nn.Module):
             Tensor: The value estimates.
         """
         
-        privileged_latent = self.privileged_factor_encoder(privileged_observations[:,:39])
-        if self.measure_heights_in_sim:
-            terrain_latent = self.terrain_factor_encoder(privileged_observations[:,39:])
-            teacher_latent = torch.cat((privileged_latent,terrain_latent),dim=-1)
-        else:
-            teacher_latent = torch.cat((privileged_latent,),dim=-1)
+        if critic_mode == 'mlp':
+            privileged_latent = self.privileged_factor_encoder(privileged_observations[:,:39])
+            if self.measure_heights_in_sim:
+                terrain_latent = self.terrain_factor_encoder(privileged_observations[:,39:])
+                teacher_latent = torch.cat((privileged_latent,terrain_latent),dim=-1)
+            else:
+                teacher_latent = torch.cat((privileged_latent,),dim=-1)
 
-        value = self.critic(torch.cat((critic_observations, teacher_latent), dim=-1))
+            value = self.critic(torch.cat((critic_observations, teacher_latent), dim=-1))
+        elif critic_mode == 'transformer':
+            # print('You are using transformer as critic!!!')
+
+            value = self.Transformer_critic(observations_actions)
         return value
     # RNN_LSTM function
     
@@ -626,46 +655,7 @@ class PositionalEncoding(nn.Module):
         check_for_nans_infs(x, "Positional Encoding Output")
         return x
 
-class ObservationActionEmbedding(nn.Module):
-    def __init__(self, input_dim: int, hidden_sizes: list, output_dim: int):
-        super(ObservationActionEmbedding, self).__init__()
-        layers = []
-        for in_dim, out_dim in zip([input_dim] + hidden_sizes, hidden_sizes + [output_dim]):
-            layers.append(nn.Linear(in_dim, out_dim))
-            layers.append(nn.ReLU())
-        self.network = nn.Sequential(*layers)
-        self.apply(self.init_weights)
 
-    def init_weights(self, m):
-        if isinstance(m, nn.Linear):
-            nn.init.kaiming_uniform_(m.weight, nonlinearity='relu')
-            if m.bias is not None:
-                nn.init.constant_(m.bias, 0)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        check_for_nans_infs(x, "Input to ObservationActionEmbedding")
-        # Clip the input values to a reasonable range
-        x = torch.clamp(x, min=-10, max=10)
-        check_for_nans_infs(x, "Clipped Input to ObservationActionEmbedding")
-        
-        x = self.network(x)
-        check_for_nans_infs(x, "ObservationActionEmbedding Output")
-        return x
-
-class PositionwiseFeedForward(nn.Module):
-    def __init__(self, d_model: int, d_ff: int, dropout: float = 0.1):
-        super(PositionwiseFeedForward, self).__init__()
-        self.linear1 = nn.Linear(d_model, d_ff)
-        self.linear2 = nn.Linear(d_ff, d.model)
-        self.dropout = nn.Dropout(dropout)
-        self.activation = nn.ReLU()  # or nn.GELU()
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.activation(self.linear1(x))
-        x = self.dropout(x)
-        x = self.linear2(x)
-        check_for_nans_infs(x, "PositionwiseFeedForward Output")
-        return x
 
 class CausalTransformer(nn.Module):
     def __init__(self, d_model=512, nhead=8, num_encoder_layers=6, num_decoder_layers=6, dim_feedforward=2048, dropout=0.1, activation="relu"):
@@ -702,24 +692,10 @@ class CausalTransformer(nn.Module):
         check_for_nans_infs(output, "After transformer encoder")
         return output
     
-class ActionPredictionMLP(nn.Module):
-    def __init__(self, input_dim: int, hidden_sizes: list, output_dim: int):
-        super(ActionPredictionMLP, self).__init__()
-        layers = []
-        for in_dim, out_dim in zip([input_dim] + hidden_sizes, hidden_sizes + [output_dim]):
-            layers.append(nn.Linear(in_dim, out_dim))
-            layers.append(nn.ReLU())
-        if len(layers) > 1:
-            layers.pop()  # Remove the last ReLU for the output layer
-        self.network = nn.Sequential(*layers)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.network(x)
-        check_for_nans_infs(x, "ActionPredictionMLP Output")
-        return x
 
 class CompleteModel(nn.Module):
-    def __init__(self, num_obs: int, transformer_dim: int, transformer_heads: int, transformer_layers: int, mlp_ratio: int, obs_embed_hidden_sizes: list, action_pred_hidden_sizes: list, context_window: int, num_actions: int, activation=nn.ELU()):
+    def __init__(self, num_obs: int, transformer_dim: int, transformer_heads: int, transformer_layers: int, mlp_ratio: int, obs_embed_hidden_sizes: list, action_pred_hidden_sizes: list, context_window: int, num_actions: int, output_dim :int, activation=nn.ELU()):
         super(CompleteModel, self).__init__()
         num_obs_act_pair = num_obs + num_actions
         
@@ -754,7 +730,7 @@ class CompleteModel(nn.Module):
         transformer_mlp_decoder_layers.append(activation)
         for l in range(len(action_pred_hidden_sizes)):
             if l == len(action_pred_hidden_sizes) - 1:
-                transformer_mlp_decoder_layers.append(nn.Linear(action_pred_hidden_sizes[l], num_actions))
+                transformer_mlp_decoder_layers.append(nn.Linear(action_pred_hidden_sizes[l], output_dim))
             else:
                 transformer_mlp_decoder_layers.append(nn.Linear(action_pred_hidden_sizes[l], action_pred_hidden_sizes[l + 1]))
                 transformer_mlp_decoder_layers.append(activation)

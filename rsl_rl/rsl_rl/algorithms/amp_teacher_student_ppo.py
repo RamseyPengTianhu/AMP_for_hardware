@@ -32,6 +32,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
+torch.autograd.set_detect_anomaly(True)
 
 
 from rsl_rl.modules import ActorCritic
@@ -85,6 +86,7 @@ class AMPTSPPO:
                  num_adaptation_module_substeps=1,# Teacher-Student
                  num_latent_encoder_substeps=1,# Teacher-Student
                  num_obs_history =50,
+                 model_class=ActorCriticAmpTs
                  ):
 
         self.device = device
@@ -150,7 +152,27 @@ class AMPTSPPO:
         
 
         # --loading policy path---
-        self.model_path = '/home/tianhu/AMP_for_hardware/logs/a1_amp_example/Jun26_10-13-46_/model_35050.pt'
+        # self.model_path = '/home/tianhu/AMP_for_hardware/logs/a1_amp_example/Jun26_10-13-46_/model_35050.pt'
+        self.model_path = '/home/tianhu/AMP_for_hardware/logs/transformer_quad/Jul12_05-20-10_example/model_8000.pt'
+        self.model_class = model_class
+
+        # Create a new instance of the model
+        self.new_actor_critic = self.model_class(
+            num_obs=self.actor_critic.num_obs,
+            num_privileged_obs=self.actor_critic.num_privileged_obs,
+            num_terrain_obs=self.actor_critic.num_terrain_obs,
+            num_obs_history=self.actor_critic.num_obs_history,
+            num_obs_act_history=self.actor_critic.num_obs_act_history,
+            num_actions=self.actor_critic.num_actions,
+            num_env=self.actor_critic.num_env,
+            measure_heights_in_sim=self.measure_heights_in_sim,
+            context_window=self.actor_critic.context_window,
+            device=self.device
+        )
+        # Load the pre-trained policy
+        self.loaded_dict = torch.load(self.model_path)
+        self.new_actor_critic.load_state_dict(self.loaded_dict['model_state_dict'], strict=False)
+        print(f"Loaded model from {self.model_path}")
 
         
 
@@ -218,6 +240,7 @@ class AMPTSPPO:
         # # Move tensors to the device
         # obs_buffer = obs_buffer.to(self.device)
         # dones_buffer = dones_buffer.to(self.device)
+        actor_mode = 'transformer'
 
         if self.actor_critic.is_recurrent or self.actor_critic.is_LSTM:
             self.transition.hidden_states = self.actor_critic.get_hidden_states()
@@ -241,8 +264,8 @@ class AMPTSPPO:
         # self.transition.actions = pre_trained_inference_policy(aug_obs, aug_privileged_obs).detach()
         # self.transition.action_mean = pre_trained_inference_policy(aug_obs, aug_privileged_obs).detach()
 
-        self.transition.actions = self.actor_critic.act(aug_obs, aug_privileged_obs).detach()
-        self.transition.values = self.actor_critic.evaluate(aug_obs, aug_privileged_obs).detach()
+        self.transition.actions = self.actor_critic.act(aug_obs, aug_privileged_obs, aug_obs_tea_act_history, actor_mode).detach()
+        self.transition.values = self.actor_critic.evaluate(aug_obs, aug_privileged_obs, aug_obs_tea_act_history, actor_mode).detach()
         self.transition.actions_log_prob = self.actor_critic.get_actions_log_prob(self.transition.actions).detach()
         self.transition.action_mean = self.actor_critic.action_mean.detach()
         self.transition.action_sigma = self.actor_critic.action_std.detach()
@@ -292,10 +315,11 @@ class AMPTSPPO:
         self.actor_critic.RNN_reset(dones)
 
     
-    def compute_returns(self, last_critic_obs,last_critic_privileged_obs):
+    def compute_returns(self, last_critic_obs,last_critic_privileged_obs, last_observations_actions, actor_mode):
         aug_last_critic_obs = last_critic_obs.detach()# amp
         aug_last_critic_privileged_obs = last_critic_privileged_obs.detach()# Teacher and Student
-        last_values = self.actor_critic.evaluate(aug_last_critic_obs,aug_last_critic_privileged_obs).detach()
+        aug_last_observations_actions = last_observations_actions.detach()# Obs action pair (Transformer)
+        last_values = self.actor_critic.evaluate(aug_last_critic_obs,aug_last_critic_privileged_obs, aug_last_observations_actions, actor_mode).detach()
         self.storage.compute_returns(last_values, self.gamma, self.lam)
 
 
@@ -372,97 +396,103 @@ class AMPTSPPO:
             return offline_transformer_loss
 
 
-    def online_correction(self, obs_act_history_batch, obs_batch, privileged_obs_batch, obs_history_batch, lambda_kld, online_transformer_loss):
-        self.load_pretrained_policy(self.model_path)
+    def online_correction(self, obs_tea_history_batch, obs_batch, privileged_obs_batch, lambda_kld, online_transformer_loss):
+        """
+        Perform online correction by aligning the Transformer encoder's actions with the pre-trained expert policy using KL divergence.
 
-        # Use the loaded policy for inference
-        pre_trained_inference_policy = self.get_existing_policy(mode='inference')
-        for epoch in range(self.num_adaptation_module_substeps):
-            # Forward pass through Transformer encoder
-            transformer_action_batch = self.actor_critic.Transformer_encoder(obs_act_history_batch)
-            pre_trained_action = pre_trained_inference_policy(obs_batch, privileged_obs_batch)
+        Parameters:
+        - obs_tea_history_batch (torch.Tensor): Batch of observation history for the teacher.
+        - obs_batch (torch.Tensor): Current observations.
+        - privileged_obs_batch (torch.Tensor): Privileged observations.
+        - lambda_kld (float): Weighting factor for the KL divergence loss.
 
-            
-            
-                    
-            # Calculate probabilities of the teacher actions without tracking gradients
-            with torch.no_grad():
-                teacher_actions = F.softmax(pre_trained_action, dim=-1)
+        Returns:
+        - torch.Tensor: The computed online transformer loss.
+        """
+        
+        # Use the pre-trained expert policy for inference
+        pre_trained_inference_policy = self.get_existing_policy(mode='expert',device = self.device)
+        
+        # Forward pass through Transformer encoder to get predicted actions
+        transformer_action_batch, transformer_action_std = self.actor_critic.act_inference_transformer(obs_batch, obs_tea_history_batch)
+        
+        # Obtain pre-trained actions and their standard deviations from the expert policy
+        with torch.no_grad():  # Ensure no gradients are computed for the pre-trained policy
+            pre_trained_action, pre_trained_action_std = pre_trained_inference_policy(obs_batch, privileged_obs_batch)
+        
+        # Compute the KL divergence between Gaussian distributions
+        kl_div = torch.sum(
+            torch.log(transformer_action_std / pre_trained_action_std + 1.e-5) + 
+            (torch.square(pre_trained_action_std) + torch.square(pre_trained_action - transformer_action_batch)) / 
+            (2.0 * torch.square(transformer_action_std)) - 0.5, axis=-1)
+        kld_loss = torch.mean(kl_div)
+        
+        # Compute the final online transformer loss by weighting the KL divergence loss
+        online_transformer_loss = lambda_kld * kld_loss
 
-            # Calculate log probabilities of the actions predicted by the transformer
-            # log_transformer_actions = F.log_softmax(transformer_action_batch, dim=-1)
-
-            # Compute the KL divergence loss
-            kld_loss = F.kl_div(transformer_action_batch, pre_trained_action, reduction='batchmean')
-
-            # Compute the MSE loss between the transformer's predicted actions and the teacher's actions
-            mse_loss = F.mse_loss(transformer_action_batch, pre_trained_action)
-
-            # Combine the losses
-            online_transformer_loss = mse_loss + lambda_kld * kld_loss
-
-            # Zero gradients, backward pass, and optimizer step for transformer loss
-            self.transformer_optimizer.zero_grad()
-            online_transformer_loss.backward() 
-            self.transformer_optimizer.step()
-            online_transformer_loss += online_transformer_loss.item()
-
-            return online_transformer_loss
+        return online_transformer_loss
         
 
-    def load_pretrained_policy(self, model_path, load_optimizer=False):
-        """Function to load a pre-trained policy."""
-        loaded_dict = torch.load(model_path)
-        model_dict = self.actor_critic.state_dict()
+    # def load_pretrained_policy(self, model_path, load_optimizer=False):
+    #     """Function to load a pre-trained policy."""
+    #     loaded_dict = torch.load(model_path)
+    #     model_dict = self.actor_critic.state_dict()
 
-        # Filter out unnecessary keys
-        pretrained_dict = {k: v for k, v in loaded_dict['model_state_dict'].items() if k in model_dict}
+    #     # Filter out unnecessary keys
+    #     pretrained_dict = {k: v for k, v in loaded_dict['model_state_dict'].items() if k in model_dict}
         
-        # Overwrite entries in the existing state dict
-        model_dict.update(pretrained_dict)
+    #     # Overwrite entries in the existing state dict
+    #     model_dict.update(pretrained_dict)
         
-        # Load the new state dict
-        self.actor_critic.load_state_dict(model_dict)
+    #     # Load the new state dict
+    #     self.actor_critic.load_state_dict(model_dict)
 
-        self.discriminator.load_state_dict(loaded_dict['discriminator_state_dict'])
-        self.amp_normalizer = loaded_dict['amp_normalizer']
-        if load_optimizer and 'optimizer_state_dict' in loaded_dict:
-            self.optimizer.load_state_dict(loaded_dict['optimizer_state_dict'])
-        # Use the loaded policy for inference
-        # print(f"Loaded model from {model_path}")
+    #     self.discriminator.load_state_dict(loaded_dict['discriminator_state_dict'])
+    #     self.amp_normalizer = loaded_dict['amp_normalizer']
+    #     if load_optimizer and 'optimizer_state_dict' in loaded_dict:
+    #         self.optimizer.load_state_dict(loaded_dict['optimizer_state_dict'])
+    #     # Use the loaded policy for inference
+    #     print(f"Loaded model from {model_path}")
 
     def get_existing_policy(self, mode='inference', device=None):
         """
-        Retrieve the existing policy based on the specified mode.
+        Load and retrieve the existing policy based on the specified mode.
 
         Parameters:
+        - model_class (class): The class of the actor_critic model to instantiate.
+        - model_path (str): Path to the pre-trained model file.
         - mode (str): The mode of the policy to retrieve. Options are 'inference', 'expert', or 'transformer'.
-        - device (torch.device): The device to which the actor_critic model should be moved. If None, the model remains on its current device.
+        - device (torch.device): The device to which the new model should be moved. If None, the model remains on its current device.
 
         Returns:
-        - Callable: The selected policy function from actor_critic.
+        - Callable: The selected policy function from the new actor_critic model instance.
         """
+
+        
+        
+        
+
         # Switch to evaluation mode to disable dropout layers
-        self.actor_critic.eval()
+        self.new_actor_critic.eval()
 
         # Move the model to the specified device, if provided
         if device is not None:
-            self.actor_critic.to(device)
+            self.new_actor_critic.to(device)
 
         # Select and return the appropriate policy function based on the mode
         if mode == 'inference':
-            return self.actor_critic.act_inference
+            return self.new_actor_critic.act_inference
         elif mode == 'expert':
-            return self.actor_critic.act_expert
+            return self.new_actor_critic.act_expert
         elif mode == 'transformer':
-            return self.alg.actor_critic.act_inference_transformer
+            return self.new_actor_critic.act_inference_transformer
         else:
             # Raise an error if an invalid mode is provided
             raise ValueError(f"Invalid mode '{mode}'. Valid options are 'inference', 'expert', or 'transformer'.")
         
 
 
-    def update(self):
+    def update(self, current_iteration, total_iteration):
         mean_value_loss = 0
         mean_surrogate_loss = 0
         mean_latent_loss = 0
@@ -500,10 +530,13 @@ class AMPTSPPO:
                 self.num_mini_batches)
 # ----------------------------------------------
         # Initialization
-        total_steps = self.num_learning_epochs * self.num_mini_batches
-        current_step = 0  # Initialize current step, should be incremented in your training loop
+        current_step = current_iteration  # Initialize current step, should be incremented in your training loop
         lambda_kld = self.initial_lambda
-        anneal_steps = 0.2*total_steps
+        anneal_steps = 0.3*total_iteration
+        actor_mode = 'transformer'
+        # self.load_pretrained_policy(self.model_path)
+
+        
         
 
                 
@@ -516,10 +549,10 @@ class AMPTSPPO:
                 # obs_batch, critic_obs_batch, privileged_obs_batch,  obs_history_batch, actions_batch, target_values_batch, advantages_batch, returns_batch, old_actions_log_prob_batch, \
                 #     old_mu_batch, old_sigma_batch, hid_states_batch, masks_batch = sample
                 aug_obs_batch = obs_batch.detach()
-                self.actor_critic.act(aug_obs_batch, privileged_obs_batch, masks=masks_batch, hidden_states=hid_states_batch[0])
+                self.actor_critic.act(aug_obs_batch, privileged_obs_batch, obs_tea_act_history_batch, actor_mode, masks=masks_batch, hidden_states=hid_states_batch[0])
                 actions_log_prob_batch = self.actor_critic.get_actions_log_prob(actions_batch)
                 aug_critic_obs_batch = critic_obs_batch.detach()
-                value_batch = self.actor_critic.evaluate(aug_critic_obs_batch, privileged_obs_batch,masks=masks_batch, hidden_states=hid_states_batch[1])
+                value_batch = self.actor_critic.evaluate(aug_critic_obs_batch, privileged_obs_batch, obs_tea_act_history_batch, actor_mode, masks=masks_batch, hidden_states=hid_states_batch[1])
                 mu_batch = self.actor_critic.action_mean
                 sigma_batch = self.actor_critic.action_std
                 entropy_batch = self.actor_critic.entropy
@@ -527,25 +560,7 @@ class AMPTSPPO:
                 
 
                 aug_lstm_obs_batch = lstm_obs_batch.detach()
-                # aug_lstm_hid_batch = lstm_hid_batch.detach()
-                # aug_lstm_masks_batch = lstm_masks_batch.detach()
-                # print('lstm_hid_batch.shape:',lstm_hid_batch.shape)
-                
 
-                # lstm_obs_np = lstm_obs_batch.cpu().detach().numpy()  # Convert to NumPy array
-                # lstm_hid_np = lstm_hid_batch.cpu().detach().numpy()
-                # lstm_masks_np = lstm_masks_batch.cpu().detach().numpy()
-                # print('lstm_hid_np.shape:',lstm_hid_np.shape)
-                # print('lstm_masks_np.shape:',lstm_masks_np.shape)
-
-
-                # num_batches = lstm_obs_np.shape[0]
-                # sequence_length = lstm_obs_np.shape[1]
-                # num_features = lstm_obs_np.shape[2]
-
-                # lstm_obs_flat = lstm_obs_np.reshape(num_batches * sequence_length, num_features)
-                # lstm_hid_flat = lstm_hid_np.reshape(num_batches * sequence_length, -1)  # Assuming hidden state shape is variable
-                # lstm_masks_flat = lstm_masks_np.reshape(num_batches * sequence_length, -1)  # Assuming mask shape is variable
 
 
 
@@ -585,62 +600,44 @@ class AMPTSPPO:
 
 # ------------- AMP fuction added --------------
                 # Discriminator loss.
-                policy_state, policy_next_state = sample_amp_policy
-                expert_state, expert_next_state = sample_amp_expert
-                if self.amp_normalizer is not None:
-                    with torch.no_grad():
-                        policy_state = self.amp_normalizer.normalize_torch(policy_state, self.device)
-                        policy_next_state = self.amp_normalizer.normalize_torch(policy_next_state, self.device)
-                        expert_state = self.amp_normalizer.normalize_torch(expert_state, self.device)
-                        expert_next_state = self.amp_normalizer.normalize_torch(expert_next_state, self.device)
-                policy_d = self.discriminator(torch.cat([policy_state, policy_next_state], dim=-1))
-                expert_d = self.discriminator(torch.cat([expert_state, expert_next_state], dim=-1))
-                expert_loss = torch.nn.MSELoss()(
-                    expert_d, torch.ones(expert_d.size(), device=self.device))
-                policy_loss = torch.nn.MSELoss()(
-                    policy_d, -1 * torch.ones(policy_d.size(), device=self.device))
-                amp_loss = 0.5 * (expert_loss + policy_loss)
-                grad_pen_loss = self.discriminator.compute_grad_pen(
-                    *sample_amp_expert, lambda_=10)
+                # policy_state, policy_next_state = sample_amp_policy
+                # expert_state, expert_next_state = sample_amp_expert
+                # if self.amp_normalizer is not None:
+                #     with torch.no_grad():
+                #         policy_state = self.amp_normalizer.normalize_torch(policy_state, self.device)
+                #         policy_next_state = self.amp_normalizer.normalize_torch(policy_next_state, self.device)
+                #         expert_state = self.amp_normalizer.normalize_torch(expert_state, self.device)
+                #         expert_next_state = self.amp_normalizer.normalize_torch(expert_next_state, self.device)
+                # policy_d = self.discriminator(torch.cat([policy_state, policy_next_state], dim=-1))
+                # expert_d = self.discriminator(torch.cat([expert_state, expert_next_state], dim=-1))
+                # expert_loss = torch.nn.MSELoss()(
+                #     expert_d, torch.ones(expert_d.size(), device=self.device))
+                # policy_loss = torch.nn.MSELoss()(
+                #     policy_d, -1 * torch.ones(policy_d.size(), device=self.device))
+                # amp_loss = 0.5 * (expert_loss + policy_loss)
+                # grad_pen_loss = self.discriminator.compute_grad_pen(
+                #     *sample_amp_expert, lambda_=10)
 # ----------------------------------------------
-                # transformer_action_batch = self.actor_critic.Transformer_encoder(obs_act_history_batch)
-            
-           
-            
-                # # Calculate probabilities of the teacher actions without tracking gradients
-                # with torch.no_grad():
-                #     teacher_actions = F.softmax(mu_batch, dim=-1)
-                #     # Calculate log probabilities of the actions predicted by the transformer
-                #     log_transformer_actions = F.log_softmax(transformer_action_batch, dim=-1)
-                
-                # # Compute KL divergence loss
-                # kl_div_loss = F.kl_div(log_transformer_actions, teacher_actions, reduction='batchmean')
-                
-                # # Combine RL loss and KL divergence loss
-                # lambda_factor = 0.1  # Adjust the lambda factor as needed
-                # transformer_loss = lambda_factor * kl_div_loss
-                
-                # Zero gradients, backward pass, and optimizer step
-                # self.transformer_optimizer.zero_grad()
-                # total_loss.backward()
-                # self.transformer_optimizer.step()
-                
-                
 
+                # Anneal lambda_kld
+                lambda_kld = self.anneal_lambda(current_step, anneal_steps)
+
+                # Online Correction
+                online_transformer_loss = self.online_correction(obs_tea_act_history_batch, obs_batch, privileged_obs_batch, lambda_kld, online_transformer_loss)
 
 
                 # Compute total loss.
-                loss = (
-                    surrogate_loss +
-                    self.value_loss_coef * value_loss -
-                    self.entropy_coef * entropy_batch.mean() +
-                    amp_loss + grad_pen_loss)  # Adding the amp loss and gradient penality loss
-                
                 # loss = (
                 #     surrogate_loss +
                 #     self.value_loss_coef * value_loss -
                 #     self.entropy_coef * entropy_batch.mean() +
-                #     amp_loss + grad_pen_loss + transformer_loss)  # Adding the amp loss and gradient penality loss
+                #     amp_loss + grad_pen_loss)  # Adding the amp loss and gradient penality loss
+                
+                loss = (
+                    surrogate_loss +
+                    self.value_loss_coef * value_loss -
+                    self.entropy_coef * entropy_batch.mean() + online_transformer_loss
+                    )  # Adding kl loss of teacher policy and transformer
                 
                 # loss = surrogate_loss + self.value_loss_coef * value_loss - self.entropy_coef * entropy_batch.mean()
 
@@ -657,19 +654,15 @@ class AMPTSPPO:
                 # Offline Pretraining
                 # offline_transformer_loss = self.offline_pretraining(obs_tea_act_history_batch, mu_batch)
 
-                # Anneal lambda_kld
-                lambda_kld = self.anneal_lambda(current_step, anneal_steps)
-
-                # Online Correction
-                # online_transformer_loss = self.online_correction(obs_std_act_history_batch, mu_batch, lambda_kld)
+                
 
 # ------------- AMP fuction added --------------
                 if not self.actor_critic.fixed_std and self.min_std is not None:
                     self.actor_critic.std.data = self.actor_critic.std.data.clamp(min=self.min_std)
 
-                if self.amp_normalizer is not None:
-                    self.amp_normalizer.update(policy_state.cpu().numpy())
-                    self.amp_normalizer.update(expert_state.cpu().numpy())
+                # if self.amp_normalizer is not None:
+                #     self.amp_normalizer.update(policy_state.cpu().numpy())
+                #     self.amp_normalizer.update(expert_state.cpu().numpy())
 # ----------------------------------------------
 
 
@@ -678,43 +671,22 @@ class AMPTSPPO:
                 mean_value_loss += value_loss.item()
                 mean_surrogate_loss += surrogate_loss.item()
 # ------------- AMP fuction added --------------
-                mean_amp_loss += amp_loss.item()
-                mean_grad_pen_loss += grad_pen_loss.item()
-                mean_policy_pred += policy_d.mean().item()
-                mean_expert_pred += expert_d.mean().item()
+                # mean_amp_loss += amp_loss.item()
+                # mean_grad_pen_loss += grad_pen_loss.item()
+                # mean_policy_pred += policy_d.mean().item()
+                # mean_expert_pred += expert_d.mean().item()
                 # Optional: Logging loss
                 # transformer_loss += transformer_loss.item()
 
-                # Increment current step
-                current_step += 1
+
 # ----------------------------------------------
 
-
-            
-        #     # Optional: Logging loss
-        #     transformer_loss = transformer_loss.item()
-# ------------------------------------------------------------------
 
 
 # # ----------------------Teacher and student policy framework-------------------
 # ----------------------Observation history MLP-------------------
         # Adaptation module gradient step
-        for epoch in range(self.num_adaptation_module_substeps):
-            adaptation_pred = self.actor_critic.adaptation_module(obs_history_batch)
-            with torch.no_grad():
-                if self.measure_heights_in_sim:
-                    privileged_target = self.actor_critic.privileged_factor_encoder(privileged_obs_batch[:,:39])
-                    terrain_target = self.actor_critic.terrain_factor_encoder(privileged_obs_batch[:,39:])
-                    latent_target = torch.cat((privileged_target,terrain_target),dim=-1)
-                # residual = (adaptation_target - adaptation_pred).norm(dim=1)
-
-            adaptation_loss = F.mse_loss(adaptation_pred, latent_target)
-
-            self.adaptation_optimizer.zero_grad()
-            adaptation_loss.backward()
-            self.adaptation_optimizer.step()
-
-            mean_adaptation_loss += adaptation_loss.item()
+        # mean_adaptation_loss = self.train_adaptation_module(self, obs_history_batch, privileged_obs_batch, mean_adaptation_loss)
 # -----------------------------------------------------------------------------
         num_updates = self.num_learning_epochs * self.num_mini_batches
         mean_value_loss /= num_updates
@@ -777,6 +749,8 @@ class AMPTSPPO:
         mean_surrogate_loss /= num_updates
         mean_latent_loss /= (num_updates * self.num_latent_encoder_substeps)
         self.storage.clear()
+        # Increment current step
+        current_step += 1
 
 
         return mean_value_loss, mean_surrogate_loss, mean_amp_loss, mean_grad_pen_loss, mean_policy_pred, mean_expert_pred, mean_latent_loss, mean_adaptation_loss, offline_transformer_loss, online_transformer_loss, aug_lstm_obs_batch, lstm_masks_batch

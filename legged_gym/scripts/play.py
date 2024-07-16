@@ -299,7 +299,7 @@ def play(args):
     print('env_cfg:',env_cfg)
     # mode = 'inference'
     # mode = 'expert'
-    mode = 'expert'
+    mode = 'transformer'
     expert_mode = 'expert'
     inference_mode = 'inference'
     transformer_mode = 'transformer'
@@ -317,7 +317,7 @@ def play(args):
     # Initialize obs_act_history with the initial observation and action
     obs_act_history = ppo_runner.get_observation_action_history(obs, act, state='init', device=env.device)
 
-    print('obs_act_history:',obs_act_history.view(16,60))
+    # print('obs_act_history:',obs_act_history.view(16,60))
     
 
     policy = ppo_runner.get_inference_policy(mode,device=env.device)
@@ -436,7 +436,7 @@ def play(args):
         # Update observation-action history with the new actions
         obs_act_history = ppo_runner.get_observation_action_history(obs, actions, state='update', device=env.device)
 
-        obs_act_history_transform = obs_act_history.view(16,60)
+        # obs_act_history_transform = obs_act_history.view(16,60)
 
 
         # Apply sinusoidal force periodically
@@ -458,7 +458,7 @@ def play(args):
             t = (i - force_start_step) * env.dt  # Current time in the force duration
             force_magnitude = target_force_amplitude * np.sin(np.pi * t / force_time)
             # Apply the sinusoidal force
-            # world_force_vector = apply_sinusoidal_force(env, robot_index, local_force_vector, local_torque_vector, force_magnitude)
+            world_force_vector = apply_sinusoidal_force(env, robot_index, local_force_vector, local_torque_vector, force_magnitude)
 
             # if i == force_start_step + mid_force_duration_steps:
             #     draw_force_vector(env, robot_index, world_force_vector, scale_factor=0.5, arrow_thickness=0.02, arrow_head_length=0.1)

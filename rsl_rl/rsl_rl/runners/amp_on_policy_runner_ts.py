@@ -43,6 +43,8 @@ from rsl_rl.env import VecEnv, HistoryWrapper
 from rsl_rl.algorithms.amp_discriminator import AMPDiscriminator
 from rsl_rl.datasets.motion_loader import AMPLoader
 from rsl_rl.utils.utils import Normalizer
+import torch.autograd as autograd
+autograd.set_detect_anomaly(True)
 
 class AMPTSOnPolicyRunner:
 
@@ -89,7 +91,6 @@ class AMPTSOnPolicyRunner:
         self.obs_act_history_play = torch.zeros(self.env.num_envs,(self.env.num_obs_act_history)).to(self.device)
         self.student_action = torch.zeros(self.env.num_envs,(self.env.num_action)).to(self.device)
 
-        # print('Init self.dones_buffer:',self.dones_buffer)
 
         actor_critic: ActorCritic = actor_critic_class(num_actor_obs, self.env.num_privileged_obs, self.env.num_terrain_obs,
                                                        self.env.num_obs_history, self.env.num_obs_act_history, self.env.num_policy_outputs,self.env.num_envs,self.measure_heights_in_sim, self.context_window,self.device,
@@ -146,9 +147,10 @@ class AMPTSOnPolicyRunner:
         # Initialize dones
         mini_batch_size = self.env.num_envs  // self.num_mini_batches
 
-        # self.last_dones = torch.zeros(self.num_steps_per_env,self.env.num_envs, dtype=torch.bool)
         self.last_dones = torch.zeros(self.env.num_envs, dtype=torch.bool)
-        # print('Init self.last_dones', self.last_dones)
+
+        self.actor_mode = 'transformer' 
+        
 
         # _, _ = self.env.reset() # when env using VecEnv
         _ = self.env.reset() # when env using HistoryWrapper
@@ -169,6 +171,7 @@ class AMPTSOnPolicyRunner:
         obs, critic_obs, privileged_obs, amp_obs, obs_history = obs.to(self.device), critic_obs.to(self.device), privileged_obs.to(self.device),amp_obs.to(self.device),obs_history.to(self.device)
         self.alg.actor_critic.train() # switch to train mode (for dropout for example)
         self.alg.discriminator.train()
+
 
         best_reward = 0
         ep_infos = []
@@ -194,8 +197,6 @@ class AMPTSOnPolicyRunner:
                         self.student_action, self.last_dones, self.obs_buffer, 
                         self.dones_buffer, self.num_obs_sequence, self.context_window
                     )
-                    # self.alg.load_pretrained_policy(model_path)
-                    # pre_trained_inference_policy = self.alg.get_inference_policy()
                     obs_dict, rewards, dones, infos, reset_env_ids, terminal_amp_states = self.env.step(actions)
                     obs, privileged_obs, obs_history = obs_dict["obs"], obs_dict["privileged_obs"], obs_dict[
                         "obs_history"]
@@ -234,10 +235,11 @@ class AMPTSOnPolicyRunner:
 
                 # Learning step
                 start = stop
-                self.alg.compute_returns(obs, privileged_obs)
+                obs_act_pair_history = self.get_observation_action_history(obs, actions, state = 'update', device = self.device)
+                self.alg.compute_returns(obs, privileged_obs, obs_act_pair_history, self.actor_mode)
             
             # mean_value_loss, mean_surrogate_loss, mean_amp_loss, mean_grad_pen_loss, mean_policy_pred, mean_expert_pred = self.alg.update()
-            mean_value_loss, mean_surrogate_loss, mean_amp_loss, mean_grad_pen_loss, mean_policy_pred, mean_expert_pred, mean_latent_loss, mean_adaptation_loss, offline_transformer_loss, online_transformer_loss, aug_lstm_obs_batch, lstm_masks_batch= self.alg.update()
+            mean_value_loss, mean_surrogate_loss, mean_amp_loss, mean_grad_pen_loss, mean_policy_pred, mean_expert_pred, mean_latent_loss, mean_adaptation_loss, offline_transformer_loss, online_transformer_loss, aug_lstm_obs_batch, lstm_masks_batch= self.alg.update(self.current_learning_iteration, num_learning_iterations)
             stop = time.time()
             learn_time = stop - start
             if self.log_dir is not None:

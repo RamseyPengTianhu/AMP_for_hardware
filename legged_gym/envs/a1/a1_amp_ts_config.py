@@ -37,7 +37,7 @@ MOTION_FILES = glob.glob('datasets/mocap_motions/*')
 class A1AMPTSCfg( LeggedRobotCfg ):
 
     class env( LeggedRobotCfg.env ):
-        num_envs = 500
+        num_envs = 150
         include_history_steps = None  # Number of steps of history to include.
         num_observations = 48
         # num_observations = 45+6
@@ -45,7 +45,7 @@ class A1AMPTSCfg( LeggedRobotCfg ):
         num_terrain_obs = 187
         num_observation_history = 45
         num_obs_sequence = 50
-        context_window = 16
+        context_window = 8
         reference_state_initialization = True
         reference_state_initialization_prob = 0.85
         amp_motion_files = MOTION_FILES
@@ -114,7 +114,7 @@ class A1AMPTSCfg( LeggedRobotCfg ):
 
 
     class terrain( LeggedRobotCfg.terrain ):
-        mesh_type = 'trimesh'  # none, plane, heightfield or trimesh
+        mesh_type = 'plane'  # none, plane, heightfield or trimesh
         measure_heights = False
         measure_heights_in_sim = True
         
@@ -270,10 +270,10 @@ class A1AMPTSCfg( LeggedRobotCfg ):
 
         class ranges:
             # lin_vel_x = [-1.0, 2.0] # min max [m/s]
-            lin_vel_x = [-1.0,1.5] # min max [m/s]
+            lin_vel_x = [1.0,1.0] # min max [m/s]
             # lin_vel_y = [-0.01, 0.01]   # min max [m/s]
-            lin_vel_y = [-0.3, 0.3]   # min max [m/s]
-            ang_vel_yaw = [-0.7,0.7]    # min max [rad/s]
+            lin_vel_y = [0, 0]   # min max [m/s]
+            ang_vel_yaw = [0,0]    # min max [rad/s]
             heading = [-3.14, 3.14]
             # heading = [0.0, 0.0]
 
@@ -303,7 +303,7 @@ class A1AMPTSCfgPPO( LeggedRobotCfgPPO ):
         # algorithm_class_name = 'AMPPPO'
         policy_class_name = 'ActorCriticAmpTs'
         # policy_class_name = 'ActorCritic'
-        max_iterations = 50000 # number of policy updates
+        max_iterations = 20000 # number of policy updates
         # max_iterations = 3000 # number of policy updates
        
         resume = False
@@ -314,7 +314,8 @@ class A1AMPTSCfgPPO( LeggedRobotCfgPPO ):
 
         amp_reward_coef = 2.0
         amp_motion_files = MOTION_FILES
-        amp_num_preload_transitions = 2000000
+        # amp_num_preload_transitions = 2000000
+        amp_num_preload_transitions = 20
         amp_task_reward_lerp = 0.3
         amp_discr_hidden_dims = [1024, 512]
 
