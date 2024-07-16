@@ -420,11 +420,12 @@ def play(args):
         # Generate actions based on the current observations and action history
 
         if mode == 'transformer':
-            actions = policy(obs,obs_act_history)
+            actions, _ = policy(obs,obs_act_history)
+            # print('actions:',actions)
         elif mode == 'inference':
-            actions = policy(obs,obs_history)
+            actions, _ = policy(obs,obs_history)
         elif mode == 'expert':
-            actions = policy(obs, privileged_obs)
+            actions, _  = policy(obs, privileged_obs)
         
         expert_actions = expert_policy(obs, privileged_obs)
         transformer_actions = transformer_policy(obs, obs_act_history)
@@ -432,7 +433,8 @@ def play(args):
 
 
 
-
+        # print('obs.shape:',obs.type)
+        # print('actions.shape:',actions.type)
         # Update observation-action history with the new actions
         obs_act_history = ppo_runner.get_observation_action_history(obs, actions, state='update', device=env.device)
 
