@@ -28,7 +28,7 @@ def configure_environment(args):
 
     # Override some parameters for testing
 
-    env_cfg.env.num_envs = min(env_cfg.env.num_envs, 1)
+    env_cfg.env.num_envs = min(env_cfg.env.num_envs, 20)
 
     env_cfg.terrain.num_rows = 5
 
@@ -299,7 +299,7 @@ def play(args):
     print('env_cfg:',env_cfg)
     # mode = 'inference'
     # mode = 'expert'
-    mode = 'expert'
+    mode = 'inference'
     expert_mode = 'expert'
     inference_mode = 'inference'
     transformer_mode = 'transformer'
@@ -317,7 +317,6 @@ def play(args):
     # Initialize obs_act_history with the initial observation and action
     obs_act_history = ppo_runner.get_observation_action_history(obs, act, state='init', device=env.device)
 
-    print('obs_act_history:',obs_act_history.view(16,60))
     
 
     policy = ppo_runner.get_inference_policy(mode,device=env.device)
@@ -436,7 +435,6 @@ def play(args):
         # Update observation-action history with the new actions
         obs_act_history = ppo_runner.get_observation_action_history(obs, actions, state='update', device=env.device)
 
-        obs_act_history_transform = obs_act_history.view(16,60)
 
 
         # Apply sinusoidal force periodically
@@ -698,7 +696,7 @@ if __name__ == '__main__':
 
     RECORD_FRAMES = False
 
-    MOVE_CAMERA = True
+    MOVE_CAMERA = False
 
     args = get_args()
 

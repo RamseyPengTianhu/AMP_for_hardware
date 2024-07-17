@@ -410,26 +410,26 @@ class AMPTSPPO:
             return online_transformer_loss
         
 
-    def load_pretrained_policy(self, model_path, load_optimizer=False):
-        """Function to load a pre-trained policy."""
-        loaded_dict = torch.load(model_path)
-        model_dict = self.actor_critic.state_dict()
+    # def load_pretrained_policy(self, model_path, load_optimizer=False):
+    #     """Function to load a pre-trained policy."""
+    #     loaded_dict = torch.load(model_path)
+    #     model_dict = self.actor_critic.state_dict()
 
-        # Filter out unnecessary keys
-        pretrained_dict = {k: v for k, v in loaded_dict['model_state_dict'].items() if k in model_dict}
+    #     # Filter out unnecessary keys
+    #     pretrained_dict = {k: v for k, v in loaded_dict['model_state_dict'].items() if k in model_dict}
         
-        # Overwrite entries in the existing state dict
-        model_dict.update(pretrained_dict)
+    #     # Overwrite entries in the existing state dict
+    #     model_dict.update(pretrained_dict)
         
-        # Load the new state dict
-        self.actor_critic.load_state_dict(model_dict)
+    #     # Load the new state dict
+    #     self.actor_critic.load_state_dict(model_dict)
 
-        self.discriminator.load_state_dict(loaded_dict['discriminator_state_dict'])
-        self.amp_normalizer = loaded_dict['amp_normalizer']
-        if load_optimizer and 'optimizer_state_dict' in loaded_dict:
-            self.optimizer.load_state_dict(loaded_dict['optimizer_state_dict'])
-        # Use the loaded policy for inference
-        # print(f"Loaded model from {model_path}")
+    #     self.discriminator.load_state_dict(loaded_dict['discriminator_state_dict'])
+    #     self.amp_normalizer = loaded_dict['amp_normalizer']
+    #     if load_optimizer and 'optimizer_state_dict' in loaded_dict:
+    #         self.optimizer.load_state_dict(loaded_dict['optimizer_state_dict'])
+    #     # Use the loaded policy for inference
+    #     # print(f"Loaded model from {model_path}")
 
     def get_existing_policy(self, mode='inference', device=None):
         """

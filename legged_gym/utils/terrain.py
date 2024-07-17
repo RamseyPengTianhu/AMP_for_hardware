@@ -67,11 +67,11 @@ class Terrain:
 
         self.height_field_raw = np.zeros((self.tot_rows, self.tot_cols), dtype=np.int16)
         self.terrain_types_order = [
-            "plane", "uniform_terrain", "wave_terrain", "stepping_stones_terrain", 
-            "pyramid_sloped_terrain", "pyramid_stairs_terrain", "discrete_obstacles_terrain"
+            "gap_stairs_terrain", "uniform_terrain", "wave_terrain", "stepping_stones_terrain", 
+            "pyramid_sloped_terrain", "pyramid_stairs_terrain", "discrete_obstacles_terrain", "plane"
         ]
         # self.terrain_types_order = [
-        #     "uniform_terrain"
+        #     "gap_stairs_terrain"
         # ]
         self.curiculum()
 
@@ -208,6 +208,10 @@ class Terrain:
             step_height = 0.02 + 0.1 * difficulty
             terrain_utils.pyramid_stairs_terrain(
                 terrain, step_width=0.3, step_height=step_height, platform_size=3.0)
+        elif terrain_type == 'gap_stairs_terrain':
+            step_height = 0.02 + 0.1 * difficulty
+            terrain_utils.pyramid_stairs_terrain(
+                terrain, step_width=0.3, step_height=-step_height, platform_size=3.0)
         elif terrain_type == "discrete_obstacles_terrain":
             num_rectangles = 20
             rectangle_min_size = 1.0
@@ -268,6 +272,19 @@ class Terrain:
         y1 = terrain.width // 2 - platform_size
         y2 = terrain.width // 2 + platform_size
         terrain.height_field_raw[x1:x2, y1:y2] = -depth
+
+
+    def generate_pyramid_stairs_and_inverse_terrain(self, terrain, difficulty):
+        step_height = 0.02 + 0.1 * difficulty
+        terrain_utils.pyramid_stairs_terrain(
+            terrain, step_width=0.3, step_height=step_height, platform_size=3.0
+        )
+        self.generate_inverse_slope_terrain(terrain, difficulty)
+
+    def generate_inverse_slope_terrain(self, terrain, difficulty):
+        inverse_slope = -difficulty * 0.4
+        # Implementing the inverse slope logic here, you might need to adjust this according to your specific requirements.
+        terrain_utils.pyramid_sloped_terrain(terrain, slope=inverse_slope, platform_size=3.0)
 
 
 
