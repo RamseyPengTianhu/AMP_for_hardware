@@ -2,6 +2,8 @@
 from legged_gym import LEGGED_GYM_ROOT_DIR
 import os
 import pandas as pd
+import json
+import threading
 
 
 import isaacgym
@@ -28,7 +30,7 @@ def configure_environment(args):
 
     # Override some parameters for testing
 
-    env_cfg.env.num_envs = min(env_cfg.env.num_envs, 20)
+    env_cfg.env.num_envs = min(env_cfg.env.num_envs, 1)
 
     env_cfg.terrain.num_rows = 5
 
@@ -290,6 +292,26 @@ def save_states_to_csv(state_log, dt, output_dir):
             df.columns = [key]
         df.to_csv(os.path.join(output_dir, f'{key}.csv'), index=False)
 
+def _check_command_interface():
+    """Check for command updates from the shared file."""
+    try:
+        with open('command_interface.json', 'r') as file:
+            command_interface = json.load(file)
+        return command_interface
+    except FileNotFoundError:
+        return {}
+
+def _update_command_ranges(env, command_interface):
+    """Update command ranges in the environment."""
+    if 'lin_vel_x' in command_interface:
+        env.command_ranges["lin_vel_x"] = command_interface['lin_vel_x']
+    if 'lin_vel_y' in command_interface:
+        env.command_ranges["lin_vel_y"] = command_interface['lin_vel_y']
+    if 'ang_vel_yaw' in command_interface:
+        env.command_ranges["ang_vel_yaw"] = command_interface['ang_vel_yaw']
+    if 'heading' in command_interface:
+        env.command_ranges["heading"] = command_interface['heading']
+
 
 
 
@@ -413,7 +435,7 @@ def play(args):
 
 
 
-    for i in range(1 * int(env.max_episode_length)):
+    for i in range(2 * int(env.max_episode_length)):
 
 
         # Generate actions based on the current observations and action history
@@ -435,6 +457,11 @@ def play(args):
         # Update observation-action history with the new actions
         obs_act_history = ppo_runner.get_observation_action_history(obs, actions, state='update', device=env.device)
 
+
+
+        # Check and update command ranges
+        command_interface = _check_command_interface()
+        _update_command_ranges(env, command_interface)
 
 
         # Apply sinusoidal force periodically
@@ -696,7 +723,7 @@ if __name__ == '__main__':
 
     RECORD_FRAMES = False
 
-    MOVE_CAMERA = False
+    MOVE_CAMERA = True
 
     args = get_args()
 

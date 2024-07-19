@@ -848,6 +848,8 @@ class LeggedRobot(BaseTask):
                           2] = torch.tensor([self.fixed_commands[2]]).repeat(
                               len(env_ids)).to(device=self.device)
         else:
+            print('self.command_ranges["lin_vel_x"][0]:',self.command_ranges["lin_vel_x"][0])
+            print('self.command_ranges["lin_vel_x"]:',self.command_ranges["lin_vel_x"])
             self.commands[env_ids, 0] = torch_rand_float(
                 self.command_ranges["lin_vel_x"][0],
                 self.command_ranges["lin_vel_x"][1], (len(env_ids), 1),
