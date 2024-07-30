@@ -30,7 +30,9 @@ def configure_environment(args):
 
     # Override some parameters for testing
 
-    env_cfg.env.num_envs = min(env_cfg.env.num_envs, 1)
+    # env_cfg.env.num_envs = min(env_cfg.env.num_envs, 1)
+    env_cfg.env.num_envs = 1 if "real" in args.task else min(env_cfg.env.num_envs, 1)
+
 
     env_cfg.terrain.num_rows = 5
 
@@ -101,14 +103,16 @@ def initialize_environment(args, env_cfg):
 
     _, _, _ = env.reset()
 
-     # Initialize tensors for forces and torques
-    env.rigid_body_forces = torch.zeros((env.num_envs, env.num_bodies, 3), device=env.device, dtype=torch.float)
-    env.rigid_body_torques = torch.zeros((env.num_envs, env.num_bodies, 3), device=env.device, dtype=torch.float)
+    if "real" not in args.task :
+        # Initialize tensors for forces and torques
+        env.rigid_body_forces = torch.zeros((env.num_envs, env.num_bodies, 3), device=env.device, dtype=torch.float)
+        env.rigid_body_torques = torch.zeros((env.num_envs, env.num_bodies, 3), device=env.device, dtype=torch.float)
+        terrain_obs = env.get_terrain_observations()
+
 
 
     obs_dict = env.get_observations()
 
-    terrain_obs = env.get_terrain_observations()
 
     obs, privileged_obs, obs_history = obs_dict["obs"], obs_dict["privileged_obs"], obs_dict["obs_history"]
 
@@ -612,15 +616,15 @@ def play(args):
 
                 'base_vel_yaw': env.base_ang_vel[robot_index, 2].item(),
 
-                'contact_forces_z': env.contact_forces[robot_index, env.feet_indices, 2].cpu().numpy(),
+                # 'contact_forces_z': env.contact_forces[robot_index, env.feet_indices, 2].cpu().numpy(),
 
                 'CoT': CoT
 
             })
 
-        elif i == stop_state_log:
+        # elif i == stop_state_log:
 
-            logger.plot_states()
+        #     logger.plot_states()
 
 
 
@@ -723,7 +727,7 @@ if __name__ == '__main__':
 
     RECORD_FRAMES = False
 
-    MOVE_CAMERA = True
+    MOVE_CAMERA = False
 
     args = get_args()
 

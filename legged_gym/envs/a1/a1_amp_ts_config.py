@@ -51,6 +51,7 @@ class A1AMPTSCfg( LeggedRobotCfg ):
         amp_motion_files = MOTION_FILES
         # robot_type = 'biped'
         robot_type = 'quadruped'
+        robot_real = True
         # foot_type = 'non_point_foot'
         # num_actions = 14
         # num_policy_outputs = 14# 
@@ -111,6 +112,9 @@ class A1AMPTSCfg( LeggedRobotCfg ):
         decimation = 4
 
         history_steps = 2
+
+        use_torch_vel_estimator = False
+        use_actuator_network = False
 
 
     class terrain( LeggedRobotCfg.terrain ):
@@ -266,7 +270,7 @@ class A1AMPTSCfg( LeggedRobotCfg ):
         heading_command = False # if true: compute ang vel command from heading error
 
         fixed_commands = None  # None or [lin_vel_x, lin_vel_y, ang_vel_yaw]
-        gamepad_commands = True
+        gamepad_commands = False
 
         class ranges:
             # lin_vel_x = [-1.0, 2.0] # min max [m/s]

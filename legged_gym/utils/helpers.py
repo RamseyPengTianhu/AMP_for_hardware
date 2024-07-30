@@ -100,6 +100,25 @@ def parse_sim_params(args, cfg):
 
     return sim_params
 
+def parse_device_str(device_str):
+    device = 'cpu'
+    device_id = 0
+
+    if device_str == 'cpu' or device_str == 'cuda':
+        device = device_str
+        device_id = 0
+    else:
+        device_args = device_str.split(':')
+        assert len(device_args) == 2 and device_args[0] == 'cuda', f'Invalid device string "{device_str}"'
+        device, device_id_s = device_args
+        try:
+            device_id = int(device_id_s)
+        except ValueError:
+            raise ValueError(
+                f'Invalid device string "{device_str}". Cannot parse "{device_id}"" as a valid device id')
+    return device, device_id
+
+
 def get_load_path(root, load_run='-1', checkpoint=-1):
     try:
         runs = os.listdir(root)

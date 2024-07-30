@@ -117,9 +117,12 @@ class AMPTSOnPolicyRunner:
         #     torch.tensor(biped_min_normalized_std, device=self.device) *
         #     (torch.abs(self.env.dof_pos_limits[:, 1] - self.env.dof_pos_limits[:, 0])))
         # else:
-        min_std = (
-            torch.tensor(self.cfg["min_normalized_std"], device=self.device) *
-            (torch.abs(self.env.dof_pos_limits[:, 1] - self.env.dof_pos_limits[:, 0])))
+        if self.env.robot_real is False:
+            min_std = (
+                torch.tensor(self.cfg["min_normalized_std"], device=self.device) *
+                (torch.abs(self.env.dof_pos_limits[:, 1] - self.env.dof_pos_limits[:, 0])))
+        else:
+            min_std = 0
         # min_std = (
         #     torch.tensor(biped_min_normalized_std, device=self.device) *
         #     (torch.abs(self.env.dof_pos_limits[:, 1] - self.env.dof_pos_limits[:, 0])))

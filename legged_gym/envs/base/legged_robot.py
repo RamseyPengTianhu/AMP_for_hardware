@@ -55,6 +55,12 @@ from legged_gym.utils.isaacgym_utils import compute_meshes_normals, Point, get_e
 from .legged_robot_config import LeggedRobotCfg
 from rsl_rl.datasets.motion_loader import AMPLoader
 
+from legged_gym.envs.a1.a1_real.a1_robot_dummy import A1Dummy
+from legged_gym.envs.estimator.torch_robot_velocity_estimator import VelocityEstimator, GoogleVelocityEstimator
+from legged_gym.envs.base.motor_config import MotorControlMode
+
+
+
 # Quadruped version
 COM_OFFSET = torch.tensor([0.012731, 0.002186, 0.000515])
 HIP_OFFSETS = torch.tensor([
@@ -101,10 +107,26 @@ class LeggedRobot(BaseTask):
         super().__init__(self.cfg, sim_params, physics_engine, sim_device, headless)
         self.robot = None
 
+        if cfg.control.use_torch_vel_estimator:
+            self.robot = A1Dummy(motor_control_mode=MotorControlMode.HYBRID,
+                                 enable_action_interpolation=False,
+                                 time_step=self.cfg.sim.dt,
+                                 action_repeat=1,
+                                 device=self.device,
+                                 num_envs=self.num_envs)
+
         if not self.headless:
             self.set_camera(self.cfg.viewer.pos, self.cfg.viewer.lookat)
         self._init_buffers()
         self._prepare_reward_function()
+
+        self._state_estimator = {}
+        self._state_estimator['robot_state_estimator'] = VelocityEstimator(
+            robotIn=self.robot, window_size=20, device=self.device)
+        self._state_estimator[
+            'google_robot_state_estimator'] = GoogleVelocityEstimator(
+                robot=self.robot, moving_window_filter_size=20)
+        
         self.init_done = True
         self.history_update_cnt = 0
         self.count = 0
@@ -400,10 +422,10 @@ class LeggedRobot(BaseTask):
 
     def compute_observations(self):
 
-# Observation including the orientation of the gravity vector and base angular velocity in
-# the robot’s base frame, the joint positions and velocities, the
-# previous action a t−1 selected by the current policy,the
-# desired base velocity command vector.
+    # Observation including the orientation of the gravity vector and base angular velocity in
+    # the robot’s base frame, the joint positions and velocities, the
+    # previous action a t−1 selected by the current policy,the
+    # desired base velocity command vector.
         self.original_obs_buf = torch.cat(
             (self.base_lin_acc, self.rpy, self.base_ang_vel, self.dof_pos,
              self.dof_vel, self.contact_filt),
@@ -418,7 +440,6 @@ class LeggedRobot(BaseTask):
                  self.commands_scale,
              (self.dof_pos - self.default_dof_pos) *self.obs_scales.dof_pos,
              self.dof_vel * self.obs_scales.dof_vel,
-            #  self.actions
             self.actions
             
              ),
@@ -431,7 +452,7 @@ class LeggedRobot(BaseTask):
                     1.) * self.obs_scales.height_measurements
                 self.obs_buf = torch.cat((self.obs_buf, heights), dim=-1)
 
-        if self.cfg.env.num_observations == 51:
+        elif self.cfg.env.num_observations == 51:
             self.obs_buf = torch.cat(
             (self.base_ang_vel * self.obs_scales.ang_vel,
             self.projected_gravity, 
@@ -560,12 +581,13 @@ class LeggedRobot(BaseTask):
             state_est = self._state_estimator['robot_state_estimator']
             base_lin_vel, h = state_est(sim_t, self.original_obs_buf)
             self.robot.estimated_velocity = base_lin_vel
-            self.obs_buf[:, 6:9] = base_lin_vel * self.obs_scales.lin_vel
+            self.obs_buf[:, 0:3] = base_lin_vel * self.obs_scales.lin_vel
             heights = torch.clip(
                 h - self.cfg.rewards.base_height_target -
                 self.measured_heights, -1., 1.)
-            self.obs_buf[:,
-                         -187:] = heights * self.obs_scales.height_measurements
+            if self.cfg.terrain.measure_heights:
+                self.obs_buf[:,
+                            -187:] = heights * self.obs_scales.height_measurements
 
 
     def compute_privileged_observations(self):

@@ -220,7 +220,7 @@ class AMPLoader:
             # right_r_pos_x = msg.ee_motion[3].pos.x - (msg.base.pose.position.x + RR_Hip_Trans[0])
             # right_r_pos_y = msg.ee_motion[3].pos.y - (msg.base.pose.position.y + RR_Hip_Trans[1])
             # right_r_pos_z = msg.ee_motion[3].pos.z - (msg.base.pose.position.z + RR_Hip_Trans[2])
-            left_r_pos_x = msg.ee_motion[0].pos.x - (msg.base.pose.position.x + RL_Hip_Trans[2])
+            2 = msg.ee_motion[0].pos.x - (msg.base.pose.position.x + RL_Hip_Trans[2])
             left_r_pos_y = msg.ee_motion[0].pos.y - (msg.base.pose.position.y + RL_Hip_Trans[1])
             left_r_pos_z = msg.ee_motion[0].pos.z - (msg.base.pose.position.z + RL_Hip_Trans[0])
             right_r_pos_x = msg.ee_motion[1].pos.x - (msg.base.pose.position.x + RR_Hip_Trans[2])

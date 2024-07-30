@@ -33,6 +33,8 @@ from torch import Tensor
 import numpy as np
 from isaacgym.torch_utils import quat_apply, normalize
 from typing import Tuple
+import transformations
+
 
 # @ torch.jit.script
 def quat_apply_yaw(quat, vec):
@@ -54,3 +56,45 @@ def torch_rand_sqrt_float(lower, upper, shape, device):
     r = torch.where(r<0., -torch.sqrt(-r), torch.sqrt(r))
     r =  (r + 1.) / 2.
     return (upper - lower) * r + lower
+
+def getEulerFromQuaternion(q):
+    q = quat2wxyz(q)
+    return transformations.euler_from_quaternion(q, axes='sxyz')
+
+def getQuaternionFromEuler(rpy):
+    """
+    return: wxyz
+    """
+    return transformations.quaternion_from_euler(*rpy)
+
+def invertTransform(t, q):
+    q = quat2wxyz(q)
+    try:
+        q = transformations.quaternion_inverse(q)
+    except ValueError:
+        raise ValueError("ValueError: not a valid quaternion")
+    q = quat2xyzw(q)
+    return (-t[0], -t[1], -t[2]), q
+
+def multiplyTransforms(t1, q1, t2, q2):
+    q1 = quat2wxyz(q1)
+    q2 = quat2wxyz(q2)
+    T1 = transformations.quaternion_matrix(q1)
+    T2 = transformations.quaternion_matrix(q2)
+    T1[:3, 3] = t1
+    T2[:3, 3] = t2
+    T = T1.dot(T2)
+    p = T[:3, 3]
+    q = transformations.quaternion_from_matrix(T)
+    q = quat2xyzw(q)
+    return p, q
+
+def getMatrixFromQuaternion(q):
+    q = quat2wxyz(q)
+    return transformations.quaternion_matrix(q)[:3, :3]
+
+def quat2wxyz(q):
+    return (q[3], q[0], q[1], q[2])
+
+def quat2xyzw(q):
+    return (q[1], q[2], q[3], q[0])

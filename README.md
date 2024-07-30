@@ -28,6 +28,27 @@ Paper: https://drive.google.com/file/d/1kFm79nMmrc0ZIiH0XO8_HV-fj73agheO/view?us
    - `cd AMP_for_hardware/rsl_rl && pip install -e .`
 5. Install legged_gymc
    - `cd ../ && pip install -e .`
+6. Compile the robot SDK of Unitree A1 and DeepRobotics Lite3 for real robot deployment.
+
+   ```
+   # Unitree A1
+   cd legged_gym/envs/a1_real/unitree_legged_sdk/
+   # After entering the SDK directory, compile the code
+   mkdir build && cd build
+   cmake .. && make
+   cp *.so ../../
+   ```
+
+   ```
+
+   ```
+
+7. For torchcast installiation
+   - cd legged_gym/envs/third_party/torchcast/
+   - pip install -e .
+   - export LD_LIBRARY_PATH=/{your_path}/legged_gym/envs/a1/a1_real/unitree_legged_sdk/lib:$LD_LIBRARY_PATH
+   - echo 'export LD_LIBRARY_PATH=/{your_path}/legged_gym/envs/a1/a1_real/unitree_legged_sdk/lib:$LD_LIBRARY_PATH' >> ~/.bashrc
+   - source ~/.bashrc
 
 ### CODE STRUCTURE
 
@@ -59,6 +80,12 @@ Paper: https://drive.google.com/file/d/1kFm79nMmrc0ZIiH0XO8_HV-fj73agheO/view?us
    `python legged_gym/scripts/play.py --task=a1_amp` - By default the loaded policy is the last model of the last run of the experiment folder. - Other runs/model iteration can be selected by setting `load_run` and `checkpoint` in the train config.
 3. Record video of a trained policy
    `python legged_gym/scripts/record_policy.py --task=a1_amp` - This saves a video of the in the base directory.
+4. Train amp + teacher_student framework:  
+   ``python legged_gym/scripts/train.py --task=a1_amp_ts`
+5. Play a trained amp_ts policy in Isaac Gym simulation:
+   `python legged_gym/scripts/play.py  --task=a1_amp_ts  --experiment_name <experiment_name> --run_name <run_name>`
+6. Play a trained amp_ts policy in Real Robot:
+   `python legged_gym/scripts/play.py  --task=a1_amp_ts_real  --experiment_name <experiment_name> --run_name <run_name>`
 
 ### Adding a new environment
 

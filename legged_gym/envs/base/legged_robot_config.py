@@ -108,6 +108,8 @@ class LeggedRobotCfg(BaseConfig):
         action_scale = 0.5
         # decimation: Number of control action updates @ sim DT per policy DT
         decimation = 4
+        use_torch_vel_estimator = False
+        use_actuator_network = False
 
     class asset:
         file = ""

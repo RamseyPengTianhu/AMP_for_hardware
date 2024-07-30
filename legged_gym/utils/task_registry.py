@@ -158,6 +158,7 @@ class TaskRegistry():
         runner_class = eval(train_cfg.runner_class_name)
         train_cfg_dict = class_to_dict(train_cfg)
         # runner = runner_class(env, train_cfg_dict, log_dir, device=args.rl_device)
+        print('env:',env)
         runner = AMPTSOnPolicyRunner(env,
                                     train_cfg_dict,
                                     log_dir,
