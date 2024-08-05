@@ -240,7 +240,7 @@ class AMPTSPPO:
         # # Move tensors to the device
         # obs_buffer = obs_buffer.to(self.device)
         # dones_buffer = dones_buffer.to(self.device)
-        actor_mode = 'transformer'
+        actor_mode = 'mlp'
 
         if self.actor_critic.is_recurrent or self.actor_critic.is_LSTM:
             self.transition.hidden_states = self.actor_critic.get_hidden_states()
@@ -533,7 +533,7 @@ class AMPTSPPO:
         current_step = current_iteration  # Initialize current step, should be incremented in your training loop
         lambda_kld = self.initial_lambda
         anneal_steps = 0.3*total_iteration
-        actor_mode = 'transformer'
+        actor_mode = 'mlp'
         # self.load_pretrained_policy(self.model_path)
 
         
@@ -600,44 +600,44 @@ class AMPTSPPO:
 
 # ------------- AMP fuction added --------------
                 # Discriminator loss.
-                # policy_state, policy_next_state = sample_amp_policy
-                # expert_state, expert_next_state = sample_amp_expert
-                # if self.amp_normalizer is not None:
-                #     with torch.no_grad():
-                #         policy_state = self.amp_normalizer.normalize_torch(policy_state, self.device)
-                #         policy_next_state = self.amp_normalizer.normalize_torch(policy_next_state, self.device)
-                #         expert_state = self.amp_normalizer.normalize_torch(expert_state, self.device)
-                #         expert_next_state = self.amp_normalizer.normalize_torch(expert_next_state, self.device)
-                # policy_d = self.discriminator(torch.cat([policy_state, policy_next_state], dim=-1))
-                # expert_d = self.discriminator(torch.cat([expert_state, expert_next_state], dim=-1))
-                # expert_loss = torch.nn.MSELoss()(
-                #     expert_d, torch.ones(expert_d.size(), device=self.device))
-                # policy_loss = torch.nn.MSELoss()(
-                #     policy_d, -1 * torch.ones(policy_d.size(), device=self.device))
-                # amp_loss = 0.5 * (expert_loss + policy_loss)
-                # grad_pen_loss = self.discriminator.compute_grad_pen(
-                #     *sample_amp_expert, lambda_=10)
+                policy_state, policy_next_state = sample_amp_policy
+                expert_state, expert_next_state = sample_amp_expert
+                if self.amp_normalizer is not None:
+                    with torch.no_grad():
+                        policy_state = self.amp_normalizer.normalize_torch(policy_state, self.device)
+                        policy_next_state = self.amp_normalizer.normalize_torch(policy_next_state, self.device)
+                        expert_state = self.amp_normalizer.normalize_torch(expert_state, self.device)
+                        expert_next_state = self.amp_normalizer.normalize_torch(expert_next_state, self.device)
+                policy_d = self.discriminator(torch.cat([policy_state, policy_next_state], dim=-1))
+                expert_d = self.discriminator(torch.cat([expert_state, expert_next_state], dim=-1))
+                expert_loss = torch.nn.MSELoss()(
+                    expert_d, torch.ones(expert_d.size(), device=self.device))
+                policy_loss = torch.nn.MSELoss()(
+                    policy_d, -1 * torch.ones(policy_d.size(), device=self.device))
+                amp_loss = 0.5 * (expert_loss + policy_loss)
+                grad_pen_loss = self.discriminator.compute_grad_pen(
+                    *sample_amp_expert, lambda_=10)
 # ----------------------------------------------
 
                 # Anneal lambda_kld
-                lambda_kld = self.anneal_lambda(current_step, anneal_steps)
+                # lambda_kld = self.anneal_lambda(current_step, anneal_steps)
 
                 # Online Correction
-                online_transformer_loss = self.online_correction(obs_tea_act_history_batch, obs_batch, privileged_obs_batch, lambda_kld, online_transformer_loss)
+                # online_transformer_loss = self.online_correction(obs_tea_act_history_batch, obs_batch, privileged_obs_batch, lambda_kld, online_transformer_loss)
 
 
                 # Compute total loss.
-                # loss = (
-                #     surrogate_loss +
-                #     self.value_loss_coef * value_loss -
-                #     self.entropy_coef * entropy_batch.mean() +
-                #     amp_loss + grad_pen_loss)  # Adding the amp loss and gradient penality loss
-                
                 loss = (
                     surrogate_loss +
                     self.value_loss_coef * value_loss -
-                    self.entropy_coef * entropy_batch.mean() + online_transformer_loss
-                    )  # Adding kl loss of teacher policy and transformer
+                    self.entropy_coef * entropy_batch.mean() +
+                    amp_loss + grad_pen_loss)  # Adding the amp loss and gradient penality loss
+                
+                # loss = (
+                #     surrogate_loss +
+                #     self.value_loss_coef * value_loss -
+                #     self.entropy_coef * entropy_batch.mean() + online_transformer_loss
+                #     )  # Adding kl loss of teacher policy and transformer
                 
                 # loss = surrogate_loss + self.value_loss_coef * value_loss - self.entropy_coef * entropy_batch.mean()
 
@@ -671,10 +671,10 @@ class AMPTSPPO:
                 mean_value_loss += value_loss.item()
                 mean_surrogate_loss += surrogate_loss.item()
 # ------------- AMP fuction added --------------
-                # mean_amp_loss += amp_loss.item()
-                # mean_grad_pen_loss += grad_pen_loss.item()
-                # mean_policy_pred += policy_d.mean().item()
-                # mean_expert_pred += expert_d.mean().item()
+                mean_amp_loss += amp_loss.item()
+                mean_grad_pen_loss += grad_pen_loss.item()
+                mean_policy_pred += policy_d.mean().item()
+                mean_expert_pred += expert_d.mean().item()
                 # Optional: Logging loss
                 # transformer_loss += transformer_loss.item()
 

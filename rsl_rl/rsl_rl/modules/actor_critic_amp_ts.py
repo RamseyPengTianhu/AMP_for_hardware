@@ -757,7 +757,106 @@ class CompleteModel(nn.Module):
         check_for_nans_infs(action_predictions, "After action prediction")
         
         return action_predictions
+    
+class CrossAttention(nn.Module):
+    def __init__(self, in_dim1, in_dim2, k_dim, v_dim, num_heads):
+        super(CrossAttention, self).__init__()
+        self.num_heads = num_heads
+        self.k_dim = k_dim
+        self.v_dim = v_dim
+        
+        self.proj_q1 = nn.Linear(in_dim1, k_dim * num_heads, bias=False)
+        self.proj_k2 = nn.Linear(in_dim2, k_dim * num_heads, bias=False)
+        self.proj_v2 = nn.Linear(in_dim2, v_dim * num_heads, bias=False)
+        self.proj_o = nn.Linear(v_dim * num_heads, in_dim1)
+        
+    def forward(self, x1, x2, mask=None):
+        batch_size, seq_len1, in_dim1 = x1.size()
+        seq_len2 = x2.size(1)
+        
+        q1 = self.proj_q1(x1).view(batch_size, seq_len1, self.num_heads, self.k_dim).permute(0, 2, 1, 3)
+        k2 = self.proj_k2(x2).view(batch_size, seq_len2, self.num_heads, self.k_dim).permute(0, 2, 3, 1)
+        v2 = self.proj_v2(x2).view(batch_size, seq_len2, self.num_heads, self.v_dim).permute(0, 2, 1, 3)
+        
+        attn = torch.matmul(q1, k2) / self.k_dim**0.5
+        
+        if mask is not None:
+            attn = attn.masked_fill(mask == 0, -1e9)
+        
+        attn = F.softmax(attn, dim=-1)
+        output = torch.matmul(attn, v2).permute(0, 2, 1, 3).contiguous().view(batch_size, seq_len1, -1)
+        output = self.proj_o(output)
+        
+        return output
 
+class CausalCrossAttentionPolicy(nn.Module):
+    def __init__(self, input_dim, model_dim, k_dim, v_dim, num_heads, num_layers, output_dim, method='direct'):
+        super(CausalCrossAttentionPolicy, self).__init__()
+        self.policies = nn.ModuleList([GaitPolicy(input_dim, model_dim, output_dim) for _ in range(3)])
+        self.positional_encoding = PositionalEncoding(model_dim)
+        self.cross_attention_layers = nn.ModuleList([CrossAttention(model_dim, model_dim, k_dim, v_dim, num_heads) for _ in range(num_layers)])
+        self.multihead_attention = nn.MultiheadAttention(embed_dim=model_dim, num_heads=num_heads)
+        self.fc_out = nn.Linear(model_dim, output_dim)
+        self.method = method
+    
+    def forward(self, robot_state, env_state, task_requirements):
+        # Encode the robot state and apply positional encoding
+        robot_state_encoded = self.positional_encoding(robot_state)
+        
+        # Encode the environment state and task requirements
+        key_value_inputs = torch.cat((env_state, task_requirements), dim=1)
+        key_value_encoded = self.positional_encoding(key_value_inputs)
+
+        # Prepare the inputs for cross-attention mechanism
+        robot_state_encoded = robot_state_encoded.unsqueeze(0)  # Add batch dimension
+        robot_state_encoded = robot_state_encoded.permute(1, 0, 2)  # Shape: (sequence_length, batch_size, feature_dim)
+
+        key_value_encoded = key_value_encoded.unsqueeze(0)  # Add batch dimension
+        key_value_encoded = key_value_encoded.permute(1, 0, 2)  # Shape: (sequence_length, batch_size, feature_dim)
+
+        # Create a causal mask to ensure the model only attends to past and present time steps
+        seq_len = robot_state_encoded.size(0)
+        causal_mask = torch.triu(torch.ones(seq_len, seq_len), diagonal=1).bool()
+
+        # Apply the cross-attention layers with the causal mask
+        attn_output = robot_state_encoded
+        for cross_attention_layer in self.cross_attention_layers:
+            attn_output = cross_attention_layer(attn_output, key_value_encoded, mask=causal_mask)
+
+        # Apply the multi-head attention layer
+        attn_output, _ = self.multihead_attention(attn_output, attn_output, attn_output, attn_mask=causal_mask)
+
+        # Get actions from all pre-trained policies
+        actions_list = [policy(robot_state) for policy in self.policies]
+        actions_tensor = torch.stack(actions_list)  # Shape: (num_policies, batch_size, action_dim)
+
+        if self.method == 'direct':
+            # Select the best action based on attention weights
+            attn_weights = attn_output.squeeze(0).mean(0)  # Average over sequence length, shape: (num_policies,)
+            best_policy_idx = torch.argmax(attn_weights)
+            actions = actions_tensor[best_policy_idx]
+        elif self.method == 'weighted':
+            # Compute the weighted sum of actions based on attention weights
+            attn_weights = attn_output.squeeze(0).mean(0)  # Average over sequence length, shape: (num_policies,)
+            weighted_actions = torch.sum(attn_weights.unsqueeze(-1) * actions_tensor, dim=0)
+            actions = weighted_actions
+        else:
+            raise ValueError("Invalid method specified. Choose 'direct' or 'weighted'.")
+        
+        return actions
+
+
+class GaitPolicy(nn.Module):
+    def __init__(self, input_dim, model_dim, output_dim):
+        super(GaitPolicy, self).__init__()
+        self.model = nn.Sequential(
+            nn.Linear(input_dim, model_dim),
+            nn.ReLU(),
+            nn.Linear(model_dim, output_dim)
+        )
+    
+    def forward(self, x):
+        return self.model(x)
 
 
 def check_for_nans_infs(tensor, name,):

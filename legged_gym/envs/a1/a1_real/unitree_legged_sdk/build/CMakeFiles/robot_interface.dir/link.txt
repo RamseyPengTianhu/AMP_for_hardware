@@ -1,0 +1,1 @@
+/usr/bin/c++ -fPIC -O3 -flto -shared  -o robot_interface.cpython-38-x86_64-linux-gnu.so CMakeFiles/robot_interface.dir/python_interface.cpp.o   -L/home/tianhu/AMP_for_hardware/legged_gym/envs/a1_real/unitree_legged_sdk/lib  -Wl,-rpath,/home/tianhu/AMP_for_hardware/legged_gym/envs/a1_real/unitree_legged_sdk/lib -pthread -lunitree_legged_sdk_amd64 -llcm 
