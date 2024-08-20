@@ -1759,6 +1759,11 @@ class LeggedRobot(BaseTask):
     def _reward_torques(self):
         # Penalize torques
         return torch.sum(torch.square(self.torques), dim=1)
+    
+    def _reward_power(self):
+        # Calculate power as the product of torques and angular velocities
+        power = torch.sum(self.torques * self.dof_vel, dim=1)
+        return power
 
     def _reward_arm_dof_pos(self):
         # Penalize  ar, dof pos
@@ -1847,4 +1852,56 @@ class LeggedRobot(BaseTask):
     def _reward_feet_contact_forces(self):
         # penalize high contact forces
         return torch.sum((torch.norm(self.contact_forces[:, self.feet_indices, :], dim=-1) -  self.cfg.rewards.max_contact_force).clip(min=0.), dim=1)
+    
+
+    def calculate_performance_metrics(self, robot_state, action):
+        # Placeholder variables for individual rewards (you can replace these with actual calculations as needed)
+        
+        # Stability: Penalize base linear velocity in the z-axis and angular velocity in the xy axes
+        stability = -self._reward_lin_vel_z() - self._reward_ang_vel_xy()
+
+        # Energy Efficiency: Penalize torques
+        # energy_efficiency = -self._reward_torques()
+        energy_efficiency = -self._reward_power()
+
+        # Speed: Tracking of linear and angular velocity commands
+        lin_vel_error = torch.sum(torch.square(self.commands[:, :2] - self.base_lin_vel[:, :2]), dim=1)
+        linear_speed_reward = torch.exp(-lin_vel_error/self.cfg.rewards.tracking_sigma)
+        ang_vel_error = torch.square(self.commands[:, 2] - self.base_ang_vel[:, 2])
+        angular_speed_reward = torch.exp(-ang_vel_error/self.cfg.rewards.tracking_sigma)
+        speed = linear_speed_reward + angular_speed_reward
+
+        # Success Rate: Can be determined by task completion status, simplified as random for now
+        success_rate = np.random.choice([0, 1])
+
+        # Cost of Transport: Penalize the overall energy expenditure, which includes torques and velocities
+        cost_of_transport = self._reward_torques() + self._reward_dof_vel() + self._reward_dof_acc()
+
+        # Adaptability: Penalize collisions and non-flat orientations
+        adaptability = -self._reward_collision() - self._reward_orientation()
+
+        # Safety: Penalize high contact forces and out-of-limit positions and velocities
+        safety = -self._reward_feet_contact_forces() - self._reward_dof_pos_limits() - self._reward_dof_vel_limits()
+
+        # Robustness: Penalize instability such as stumbling
+        robustness = -self._reward_stumble()
+
+        # Smoothness of Motion: Penalize high accelerations and rapid changes in actions
+        smoothness_of_motion = -self._reward_vel_smoothness() - self._reward_target_smoothness()
+
+        # Compliance: Penalize excessive torques and ensure motion compliance with commands
+        compliance = -self._reward_torque_limits()
+
+        return {
+            'stability': stability.mean().item(),
+            'energy_efficiency': energy_efficiency.mean().item(),
+            'speed': speed.mean().item(),
+            'success_rate': success_rate,
+            'cost_of_transport': cost_of_transport.mean().item(),
+            'adaptability': adaptability.mean().item(),
+            'safety': safety.mean().item(),
+            'robustness': robustness.mean().item(),
+            'smoothness_of_motion': smoothness_of_motion.mean().item(),
+            'compliance': compliance.mean().item()
+        }
     

@@ -130,6 +130,7 @@ class AMPTSPPO:
         self.adaptation_optimizer = optim.Adam(params, lr=learning_rate)
         # self.latent_optimizer = optim.Adam(params, lr=learning_rate)
         self.transformer_optimizer = optim.AdamW(params, lr=learning_rate)
+        self.evaluation_optimizer = optim.AdamW(params, lr=learning_rate)
 # ----------------------------------------------
         self.initial_lambda =0.95
 
@@ -431,6 +432,8 @@ class AMPTSPPO:
         online_transformer_loss = lambda_kld * kld_loss
 
         return online_transformer_loss
+    
+    # def policy_with_evaluation(self, )
         
 
     # def load_pretrained_policy(self, model_path, load_optimizer=False):
@@ -499,8 +502,16 @@ class AMPTSPPO:
 
 # ------------- Teacher and Student framework  added --------------
         mean_adaptation_loss = 0
+# ------------- Transformer framework  added --------------
+
         offline_transformer_loss = 0
         online_transformer_loss = 0
+# ------------- Evaluation framework  added --------------
+        mean_evaluation_loss = 0
+
+
+
+        
 
         
 # -----------------------------------------------------------------
@@ -660,9 +671,9 @@ class AMPTSPPO:
                 if not self.actor_critic.fixed_std and self.min_std is not None:
                     self.actor_critic.std.data = self.actor_critic.std.data.clamp(min=self.min_std)
 
-                # if self.amp_normalizer is not None:
-                #     self.amp_normalizer.update(policy_state.cpu().numpy())
-                #     self.amp_normalizer.update(expert_state.cpu().numpy())
+                if self.amp_normalizer is not None:
+                    self.amp_normalizer.update(policy_state.cpu().numpy())
+                    self.amp_normalizer.update(expert_state.cpu().numpy())
 # ----------------------------------------------
 
 
@@ -686,7 +697,22 @@ class AMPTSPPO:
 # # ----------------------Teacher and student policy framework-------------------
 # ----------------------Observation history MLP-------------------
         # Adaptation module gradient step
-        # mean_adaptation_loss = self.train_adaptation_module(self, obs_history_batch, privileged_obs_batch, mean_adaptation_loss)
+        for epoch in range(self.num_adaptation_module_substeps):
+            adaptation_pred = self.actor_critic.adaptation_module(obs_history_batch)
+            with torch.no_grad():
+                if self.measure_heights_in_sim:
+                    privileged_target = self.actor_critic.privileged_factor_encoder(privileged_obs_batch[:,:39])
+                    terrain_target = self.actor_critic.terrain_factor_encoder(privileged_obs_batch[:,39:])
+                    latent_target = torch.cat((privileged_target,terrain_target),dim=-1)
+                # residual = (adaptation_target - adaptation_pred).norm(dim=1)
+
+            adaptation_loss = F.mse_loss(adaptation_pred, latent_target)
+
+            self.adaptation_optimizer.zero_grad()
+            adaptation_loss.backward()
+            self.adaptation_optimizer.step()
+
+            mean_adaptation_loss += adaptation_loss.item()
 # -----------------------------------------------------------------------------
         num_updates = self.num_learning_epochs * self.num_mini_batches
         mean_value_loss /= num_updates
@@ -705,43 +731,29 @@ class AMPTSPPO:
         offline_transformer_loss /=(num_updates*self.num_adaptation_module_substeps)
         online_transformer_loss /=(num_updates*self.num_adaptation_module_substeps)
 
+        for epoch in range(self.num_adaptation_module_substeps):
+            # Calculate performance metrics
+            performance_metrics = self.calculate_performance_metrics(robot_state, action)
+            actual_performance_metrics_tensor = torch.tensor(list(performance_metrics.values()), dtype=torch.float32)
+            
+            with torch.no_grad():
+                # Evaluate performance
+                predicted_metrics, weighted_score = self.actor_critic.performance_evaluator(obs_history_batch)
                 
-        
-            # Student encoder gradient step
-        # for epoch in range(self.num_latent_encoder_substeps):
+            # Calculate performance loss
+            evaluation_loss = F.mse_loss(predicted_metrics, actual_performance_metrics_tensor)
+
             
-        #     hx, cx = lstm_hid_batch  # unpack the hidden states
-            
-        #     out, (hx, cx) = self.actor_critic.memory.forward(aug_lstm_obs_batch, masks=lstm_masks_batch, hidden_states=(hx, cx))
-            
-        #     latent_pred = self.actor_critic.student_latent_encoder(out)
-        #     if self.measure_heights_in_sim:
-        #         latent_pred = latent_pred.view(-1, 24)
-        #     else:
-        #         latent_pred = latent_pred.view(-1, 8)
+            self.evaluation_optimizer.zero_grad()
+            evaluation_loss.backward()
+            self.evaluation_optimizer.step()
+
+            mean_evaluation_loss += evaluation_loss.item()
+
+
+
                 
 
-          
-            
-
-
-        #     with torch.no_grad():
-                
-        #         if self.measure_heights_in_sim:
-        #             privileged_target = self.actor_critic.privileged_factor_encoder(privileged_obs_batch[:,:39])
-        #             terrain_target = self.actor_critic.terrain_factor_encoder(privileged_obs_batch[:,39:])
-        #             latent_target = torch.cat((privileged_target,terrain_target),dim=-1)
-        #         else:
-        #             privileged_target = self.actor_critic.privileged_factor_encoder(privileged_obs_batch)
-        #             latent_target = torch.cat((privileged_target,),dim=-1)
-
-        #     latent_loss = F.mse_loss(latent_pred, latent_target)
-            
-        #     self.latent_optimizer.zero_grad()
-        #     latent_loss.backward()
-        #     self.latent_optimizer.step()
-
-        #     mean_latent_loss += latent_loss.item()
 # -----------------------------------------------------------------------------
 
         num_updates = self.num_learning_epochs * self.num_mini_batches

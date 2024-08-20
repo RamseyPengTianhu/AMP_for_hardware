@@ -215,6 +215,11 @@ class ActorCriticAmpTs(nn.Module):
         self.add_module(f"Transformer_critic", self.Transformer_critic)
 
 
+        model_dim = 256
+        self.performance_evaluator = PerformanceEvaluator(model_dim, nhead=8, num_layers=6, num_metrics=10)
+        self.add_module(f"performance_evaluator", self.performance_evaluator)
+
+
    
 
         # Studnet module
@@ -857,6 +862,49 @@ class GaitPolicy(nn.Module):
     
     def forward(self, x):
         return self.model(x)
+    
+
+class CausalCrossAttention(nn.Module):
+    def __init__(self, d_model, nhead):
+        super(CausalCrossAttention, self).__init__()
+        self.query = nn.Linear(d_model, d_model)
+        self.key = nn.Linear(d_model, d_model)
+        self.value = nn.Linear(d_model, d_model)
+        self.multihead_attn = nn.MultiheadAttention(d_model, nhead)
+        
+    def forward(self, query, key, value, attn_mask=None):
+        query = self.query(query)
+        key = self.key(key)
+        value = self.value(value)
+        
+        seq_len = query.size(0)
+        causal_mask = torch.triu(torch.ones(seq_len, seq_len), diagonal=1).bool()
+        
+        if attn_mask is not None:
+            causal_mask = causal_mask | attn_mask
+
+        attn_output, _ = self.multihead_attn(query, key, value, attn_mask=causal_mask)
+        return attn_output
+    
+class PerformanceEvaluator(nn.Module):
+    def __init__(self, d_model, nhead, num_layers, num_metrics):
+        super(PerformanceEvaluator, self).__init__()
+        self.cross_attention_layers = nn.ModuleList([CausalCrossAttention(d_model, nhead) for _ in range(num_layers)])
+        self.metric_weights = nn.Parameter(torch.ones(num_metrics))  # Learnable weights for metrics
+        self.output_layer = nn.Linear(d_model, num_metrics)
+
+    # def forward(self, robot_state, env_state, task_requirements):
+    def forward(self, combined_state):
+        # combined_state = torch.cat((robot_state, env_state, task_requirements), dim=1)
+        attn_output = combined_state.unsqueeze(0).permute(1, 0, 2)  # Shape: (sequence_length, batch_size, feature_dim)
+        for layer in self.cross_attention_layers:
+            attn_output = layer(attn_output, attn_output, attn_output)
+        attn_output = attn_output.squeeze(0).permute(1, 0)
+        performance_metrics = self.output_layer(attn_output)
+        
+        # Calculate weighted score
+        weighted_score = torch.dot(performance_metrics, self.metric_weights)
+        return performance_metrics, weighted_score
 
 
 def check_for_nans_infs(tensor, name,):
