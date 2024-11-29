@@ -113,8 +113,9 @@ def initialize_environment(args, env_cfg):
     obs, privileged_obs, obs_history = obs_dict["obs"], obs_dict["privileged_obs"], obs_dict["obs_history"]
 
     act = torch.zeros(env_cfg.env.num_envs, env_cfg.env.num_actions).to(env.device)
+    disable_mask = env.get_disable_mask()
 
-    return env, obs, privileged_obs, obs_history, act
+    return env, obs, privileged_obs, obs_history, act, disable_mask
 
 def export_policy_if_needed(ppo_runner, train_cfg):
 
@@ -321,12 +322,13 @@ def play(args):
     print('env_cfg:',env_cfg)
     # mode = 'inference'
     # mode = 'expert'
-    mode = 'inference'
+    mode = 'student_dagger'
     expert_mode = 'expert'
     inference_mode = 'inference'
     transformer_mode = 'transformer'
+    dagger_mode = 'student_dagger'
 
-    env, obs, privileged_obs, obs_history, act = initialize_environment(args, env_cfg)
+    env, obs, privileged_obs, obs_history, act, disable_mask = initialize_environment(args, env_cfg)
 
     set_initial_robot_position(env, env_cfg)
 
@@ -345,6 +347,7 @@ def play(args):
     expert_policy = ppo_runner.get_inference_policy(expert_mode,device=env.device)
     inference_policy = ppo_runner.get_inference_policy(inference_mode,device=env.device)
     transformer_policy = ppo_runner.get_inference_policy(transformer_mode,device=env.device)
+    dagger_policy = ppo_runner.get_inference_policy(dagger_mode,device=env.device)
 
     export_policy_if_needed(ppo_runner, train_cfg)
 
@@ -446,6 +449,8 @@ def play(args):
             actions = policy(obs,obs_history)
         elif mode == 'expert':
             actions = policy(obs, privileged_obs)
+        elif mode =='student_dagger':
+            actions = policy(obs,obs_history,disable_mask)
         
         expert_actions = expert_policy(obs, privileged_obs)
         transformer_actions = transformer_policy(obs, obs_act_history)

@@ -398,6 +398,14 @@ class LeggedRobot(BaseTask):
     #     else:
     #         self.obs_buf = torch.clone(self.privileged_obs_buf)
 
+
+    def get_disable_mask(self):
+        # Example: Disable joints 2 and 5
+        disable_mask = torch.ones((self.num_envs, self.num_actions), device=self.device)
+        disable_mask[:, self.cfg.env.mask_joint] = 0  # Disable the hip, thigh, and calf joints of the left front leg
+        # disable_mask[:, [0, 1, 2]] = 0  # Disable the hip, thigh, and calf joints of the left front leg
+        return disable_mask
+
     def compute_observations(self):
 
 # Observation including the orientation of the gravity vector and base angular velocity in
@@ -431,6 +439,34 @@ class LeggedRobot(BaseTask):
                     1.) * self.obs_scales.height_measurements
                 self.obs_buf = torch.cat((self.obs_buf, heights), dim=-1)
 
+        elif self.cfg.env.num_observations == 60:
+            self.obs_buf = torch.cat(
+            (self.base_lin_vel*self.obs_scales.lin_vel,#3
+            self.base_ang_vel * self.obs_scales.ang_vel,
+            self.projected_gravity, 
+            self.commands[:, :3] *
+                 self.commands_scale,
+             (self.dof_pos - self.default_dof_pos) *self.obs_scales.dof_pos,
+             self.dof_vel * self.obs_scales.dof_vel,
+            #  self.actions
+            self.actions
+            
+             ),
+            dim=-1)  # 3+3+12+12+12+3=45
+            if self.cfg.terrain.measure_heights:
+                heights = torch.clip(
+                    self.root_states[:, 2].unsqueeze(1) -
+                    self.cfg.rewards.base_height_target -
+                    self.measured_heights, -1,
+                    1.) * self.obs_scales.height_measurements
+                self.obs_buf = torch.cat((self.obs_buf, heights), dim=-1)
+
+            if self.cfg.env.mask_type is not False:   
+                # Generate `disable_mask` (Binary tensor indicating disabled joints)
+                disable_mask = self.get_disable_mask()  # Shape: (num_envs, num_joints)
+                # Append `disable_mask` to `obs_buf`
+                self.obs_buf = torch.cat((self.obs_buf, disable_mask), dim=-1)
+
         if self.cfg.env.num_observations == 51:
             self.obs_buf = torch.cat(
             (self.base_ang_vel * self.obs_scales.ang_vel,
@@ -449,6 +485,8 @@ class LeggedRobot(BaseTask):
                     self.measured_heights, -1,
                     1.) * self.obs_scales.height_measurements
                 self.obs_buf = torch.cat((self.obs_buf, heights), dim=-1)
+            
+    
 
             if self.add_noise:
                 self.obs_buf += (2 * torch.rand_like(self.obs_buf) - 1) * self.noise_scale_vec
@@ -848,8 +886,8 @@ class LeggedRobot(BaseTask):
                           2] = torch.tensor([self.fixed_commands[2]]).repeat(
                               len(env_ids)).to(device=self.device)
         else:
-            print('self.command_ranges["lin_vel_x"][0]:',self.command_ranges["lin_vel_x"][0])
-            print('self.command_ranges["lin_vel_x"]:',self.command_ranges["lin_vel_x"])
+            # print('self.command_ranges["lin_vel_x"][0]:',self.command_ranges["lin_vel_x"][0])
+            # print('self.command_ranges["lin_vel_x"]:',self.command_ranges["lin_vel_x"])
             self.commands[env_ids, 0] = torch_rand_float(
                 self.command_ranges["lin_vel_x"][0],
                 self.command_ranges["lin_vel_x"][1], (len(env_ids), 1),
@@ -1849,4 +1887,11 @@ class LeggedRobot(BaseTask):
     def _reward_feet_contact_forces(self):
         # penalize high contact forces
         return torch.sum((torch.norm(self.contact_forces[:, self.feet_indices, :], dim=-1) -  self.cfg.rewards.max_contact_force).clip(min=0.), dim=1)
+    
+    def _reward_disable_joint_penalty(self):
+        # penalize using disable joint
+        disable_mask = self.get_disable_mask()
+        action_penalty = -torch.sum((self.actions * disable_mask) ** 2, dim = -1)
+
+        return action_penalty
     

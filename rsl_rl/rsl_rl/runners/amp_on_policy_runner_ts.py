@@ -62,6 +62,7 @@ class AMPTSOnPolicyRunner:
         self.save_rewards = save_rewards # Teacher Student framwork
         self.csv_header = None# Teacher Student framwork
 
+        self.mode = 'teacher'
 
         if self.env.num_privileged_obs is not None:
             num_critic_obs = self.env.num_privileged_obs 
@@ -161,6 +162,9 @@ class AMPTSOnPolicyRunner:
         if init_at_random_ep_len:
             self.env.episode_length_buf = torch.randint_like(self.env.episode_length_buf, high=int(self.env.max_episode_length))
         obs_dict = self.env.get_observations()
+        disable_mask = self.env.get_disable_mask()
+        disable_mask = disable_mask.to(self.device)
+        
 
         obs, privileged_obs, obs_history = obs_dict["obs"], obs_dict["privileged_obs"], obs_dict["obs_history"]
         amp_obs = self.env.get_amp_observations()
@@ -178,7 +182,6 @@ class AMPTSOnPolicyRunner:
         cur_episode_length = torch.zeros(self.env.num_envs, dtype=torch.float, device=self.device)
 
         
-        
         tot_iter = self.current_learning_iteration + num_learning_iterations
         for it in range(self.current_learning_iteration, tot_iter):
             start = time.time()
@@ -189,10 +192,10 @@ class AMPTSOnPolicyRunner:
 
                      # Act and update buffers
                     actions, self.obs_buffer, self.dones_buffer, self.obs_std_act_buffer, self.obs_tea_act_buffer = self.alg.act(
-                        obs, critic_obs, privileged_obs, amp_obs, obs_history, 
+                        obs, critic_obs, privileged_obs, amp_obs, obs_history, disable_mask,
                         self.obs_tea_act_buffer, self.obs_std_act_buffer, 
                         self.student_action, self.last_dones, self.obs_buffer, 
-                        self.dones_buffer, self.num_obs_sequence, self.context_window
+                        self.dones_buffer, self.num_obs_sequence, self.context_window, mode = self.mode
                     )
                     # self.alg.load_pretrained_policy(model_path)
                     # pre_trained_inference_policy = self.alg.get_inference_policy()
@@ -202,7 +205,6 @@ class AMPTSOnPolicyRunner:
                     next_amp_obs = self.env.get_amp_observations()
                     
                     
-
                     # critic_obs = privileged_obs if privileged_obs is not None else obs
                     critic_obs = obs
                     obs, critic_obs, privileged_obs, obs_history,next_amp_obs, rewards, dones = obs.to(self.device), critic_obs.to(self.device), privileged_obs.to(self.device),  obs_history.to(self.device), next_amp_obs.to(self.device), rewards.to(self.device), dones.to(self.device)
@@ -211,11 +213,11 @@ class AMPTSOnPolicyRunner:
                     next_amp_obs_with_term = torch.clone(next_amp_obs)
                     next_amp_obs_with_term[reset_env_ids] = terminal_amp_states
                 
-                    
+               
                     rewards = self.alg.discriminator.predict_amp_reward(
                         amp_obs, next_amp_obs_with_term, rewards, normalizer=self.alg.amp_normalizer)[0]
                     amp_obs = torch.clone(next_amp_obs)
-                    self.alg.process_env_step(rewards, dones, infos, next_amp_obs_with_term)
+                    self.alg.process_env_step(rewards, dones, infos, next_amp_obs_with_term, self.mode)
                     
                     if self.log_dir is not None:
                         # Book keeping
@@ -237,7 +239,9 @@ class AMPTSOnPolicyRunner:
                 self.alg.compute_returns(obs, privileged_obs)
             
             # mean_value_loss, mean_surrogate_loss, mean_amp_loss, mean_grad_pen_loss, mean_policy_pred, mean_expert_pred = self.alg.update()
-            mean_value_loss, mean_surrogate_loss, mean_amp_loss, mean_grad_pen_loss, mean_policy_pred, mean_expert_pred, mean_latent_loss, mean_adaptation_loss, offline_transformer_loss, online_transformer_loss, aug_lstm_obs_batch, lstm_masks_batch= self.alg.update()
+            
+            mean_value_loss, mean_surrogate_loss, mean_amp_loss, mean_grad_pen_loss, mean_policy_pred, mean_expert_pred, mean_latent_loss, mean_adaptation_loss, offline_transformer_loss, online_transformer_loss, distillation_loss = self.alg.update(mode = self.mode)
+
             stop = time.time()
             learn_time = stop - start
             if self.log_dir is not None:
@@ -299,6 +303,7 @@ class AMPTSOnPolicyRunner:
         self.writer.add_scalar('Loss/Offline_Transformer', locs['offline_transformer_loss'], locs['it'])
         self.writer.add_scalar('Loss/Online_Transformer', locs['online_transformer_loss'], locs['it'])
         self.writer.add_scalar('Loss/learning_rate', self.alg.learning_rate, locs['it'])
+        self.writer.add_scalar('Loss/Student_distiilation', locs['distillation_loss'], locs['it'])
         self.writer.add_scalar('Policy/mean_noise_std', mean_std.item(), locs['it'])
         self.writer.add_scalar('Perf/total_fps', fps, locs['it'])
         self.writer.add_scalar('Perf/collection time', locs['collection_time'], locs['it'])
@@ -326,6 +331,7 @@ class AMPTSOnPolicyRunner:
                           f"""{'History_MLP_Latent loss:':>{pad}} {locs['mean_adaptation_loss']:.4f}\n"""
                           f"""{'Offline transformer loss:':>{pad}} {locs['offline_transformer_loss']:.4f}\n"""
                           f"""{'Online transformer loss:':>{pad}} {locs['online_transformer_loss']:.4f}\n"""
+                          f"""{'Student_distiilation loss:':>{pad}} {locs['distillation_loss']:.4f}\n"""
                           f"""{'Mean action noise std:':>{pad}} {mean_std.item():.2f}\n"""
                           f"""{'Mean reward:':>{pad}} {statistics.mean(locs['rewbuffer']):.2f}\n"""
                           f"""{'Mean episode length:':>{pad}} {statistics.mean(locs['lenbuffer']):.2f}\n""")
@@ -381,6 +387,8 @@ class AMPTSOnPolicyRunner:
             return self.alg.actor_critic.act_expert
         elif mode == 'transformer':
             return self.alg.actor_critic.act_inference_transformer
+        elif mode == 'student_dagger':
+            return self.alg.actor_critic.act_student
         else:
             # Raise an error if an invalid mode is provided
             raise ValueError(f"Invalid mode '{mode}'. Valid options are 'inference', 'expert', or 'transformer'.")

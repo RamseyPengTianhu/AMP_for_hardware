@@ -66,13 +66,13 @@ class Terrain:
         self.tot_rows = int(self.cfg.num_rows * self.length_per_env_pixels) + 2 * self.border
 
         self.height_field_raw = np.zeros((self.tot_rows, self.tot_cols), dtype=np.int16)
-        self.terrain_types_order = [
-            "gap_stairs_terrain", "uniform_terrain", "wave_terrain", "stepping_stones_terrain", 
-            "pyramid_sloped_terrain", "pyramid_stairs_terrain", "discrete_obstacles_terrain", "plane"
-        ]
         # self.terrain_types_order = [
-        #     "gap_stairs_terrain"
+        #     "gap_stairs_terrain", "uniform_terrain", "wave_terrain", "stepping_stones_terrain", 
+        #     "pyramid_sloped_terrain", "pyramid_stairs_terrain", "discrete_obstacles_terrain", "plane"
         # ]
+        self.terrain_types_order = [
+            "plane"
+        ]
         self.curiculum()
 
         self.heightsamples = self.height_field_raw
@@ -114,12 +114,12 @@ class Terrain:
         for i in range(self.cfg.num_rows):
             terrain_type = self.terrain_types_order[i % terrain_type_count]
             for j in range(self.cfg.num_cols):
-                difficulty =  (j)/ self.cfg.num_cols
+                # difficulty =  (j)/ self.cfg.num_cols
                 # if j <=2:
                 #     difficulty =  j/ self.cfg.num_cols
                 # else:
                 #     # difficulty =  2/ self.cfg.num_cols
-                #     difficulty =  3/ self.cfg.num_cols
+                difficulty = 5/ self.cfg.num_cols
 
 
                 

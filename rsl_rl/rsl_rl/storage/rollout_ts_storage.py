@@ -58,6 +58,8 @@ class RolloutTsStorage:
             self.hidden_states = None
             self.observation_teacher_actions_histories = None
             self.observation_student_actions_histories = None
+            self.disable_mask = None
+
 
         def clear(self):
             self.__init__()
@@ -81,7 +83,10 @@ class RolloutTsStorage:
         self.obs_history_shape = obs_history_shape
         self.obs_act_history_shape = obs_act_history_shape
         self.actions_shape = actions_shape
+        disable_mask_shape = actions_shape
+        self.disable_mask_shape = actions_shape
         self.iterations = 0
+         # Existing storage fields
 
         # Core
         self.observations = torch.zeros(num_transitions_per_env, num_envs, *obs_shape, device=self.device)
@@ -113,6 +118,10 @@ class RolloutTsStorage:
                                                  num_envs,
                                                  *obs_act_history_shape,
                                                  device=self.device)
+        self.disable_mask = torch.zeros(num_transitions_per_env,
+                                                 num_envs,
+                                                 *disable_mask_shape,
+                                                 device=self.device)
         
         
         self.rewards = torch.zeros(num_transitions_per_env, num_envs, 1, device=self.device)
@@ -139,22 +148,26 @@ class RolloutTsStorage:
 
         self.step = 0
 
-    def add_transitions(self, transition: Transition):
+    def add_transitions(self, transition: Transition, mode = 'teacher'):
         if self.step >= self.num_transitions_per_env:
             raise AssertionError("Rollout buffer overflow")
+        if mode == 'teacher':
+            if self.privileged_observations is not None:
+                self.privileged_observations[self.step].copy_(transition.privileged_observations)
+            self.observation_teacher_actions_histories[self.step].copy_(transition.observation_teacher_actions_histories)
+            self.observation_student_actions_histories[self.step].copy_(transition.observation_student_actions_histories)
+            self.rewards[self.step].copy_(transition.rewards.view(-1, 1))
+            self.dones[self.step].copy_(transition.dones.view(-1, 1))
+            self.values[self.step].copy_(transition.values)
+            self.actions_log_prob[self.step].copy_(transition.actions_log_prob.view(-1, 1))
+            self.mu[self.step].copy_(transition.action_mean)
+            self.sigma[self.step].copy_(transition.action_sigma)
+
+        elif mode =='student':
+            self.disable_mask[self.step].copy_(transition.disable_mask)
         self.observations[self.step].copy_(transition.observations)
-        if self.privileged_observations is not None:
-            self.privileged_observations[self.step].copy_(transition.privileged_observations)
         self.observation_histories[self.step].copy_(transition.observation_histories)
-        self.observation_teacher_actions_histories[self.step].copy_(transition.observation_teacher_actions_histories)
-        self.observation_student_actions_histories[self.step].copy_(transition.observation_student_actions_histories)
         self.actions[self.step].copy_(transition.actions)
-        self.rewards[self.step].copy_(transition.rewards.view(-1, 1))
-        self.dones[self.step].copy_(transition.dones.view(-1, 1))
-        self.values[self.step].copy_(transition.values)
-        self.actions_log_prob[self.step].copy_(transition.actions_log_prob.view(-1, 1))
-        self.mu[self.step].copy_(transition.action_mean)
-        self.sigma[self.step].copy_(transition.action_sigma)
         self._save_hidden_states_LSTM(transition.hidden_states)
         self.step += 1
 
@@ -242,6 +255,7 @@ class RolloutTsStorage:
         obs_tea_act_history = self.observation_teacher_actions_histories.flatten(0, 1)
         obs_std_act_history = self.observation_student_actions_histories.flatten(0, 1)
         critic_observations = observations
+        disable_mask = self.disable_mask.flatten(0, 1)
 
         actions = self.actions.flatten(0, 1)
         values = self.values.flatten(0, 1)
@@ -264,6 +278,7 @@ class RolloutTsStorage:
                 obs_history_batch = obs_history[batch_idx]
                 obs_tea_act_history_batch = obs_tea_act_history[batch_idx]
                 obs_std_act_history_batch = obs_std_act_history[batch_idx]
+                disable_mask_batch = disable_mask[batch_idx]
                 actions_batch = actions[batch_idx]
                 target_values_batch = values[batch_idx]
                 returns_batch = returns[batch_idx]
@@ -271,7 +286,7 @@ class RolloutTsStorage:
                 advantages_batch = advantages[batch_idx]
                 old_mu_batch = old_mu[batch_idx]
                 old_sigma_batch = old_sigma[batch_idx]
-                yield obs_batch, critic_observations_batch, privileged_obs_batch, obs_history_batch, obs_tea_act_history_batch, obs_std_act_history_batch, actions_batch, target_values_batch, advantages_batch, returns_batch, \
+                yield obs_batch, critic_observations_batch, privileged_obs_batch, obs_history_batch, obs_tea_act_history_batch, obs_std_act_history_batch, disable_mask_batch, actions_batch, target_values_batch, advantages_batch, returns_batch, \
                        old_actions_log_prob_batch, old_mu_batch, old_sigma_batch, (None, None), None
                 # yield obs_batch, critic_observations_batch, privileged_obs_batch, obs_history_batch, actions_batch, target_values_batch, advantages_batch, returns_batch, \
                 #        old_actions_log_prob_batch, old_mu_batch, old_sigma_batch, (None, None), None

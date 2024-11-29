@@ -141,13 +141,15 @@ class ActorCriticAmpTs(nn.Module):
 
         mlp_input_dim_c = num_obs + teacher_latent_dim
         student_latent_dim = teacher_latent_dim#24
+        student_mask_dim = mlp_input_dim_a + num_actions
+
         # mlp_input_dim_a = num_actor_obs
         # mlp_input_dim_c = num_critic_obs
 
 # ------------- ----------------Teacher  --------------------------
         # Privileged factor encoder
         privileged_encoder_layers = []
-        privileged_encoder_layers.append(nn.Linear(num_privileged_obs-num_terrain_obs, privileged_encoder_hidden_dims[0]))
+        privileged_encoder_layers.append(nn.Linear(num_privileged_obs - num_terrain_obs, privileged_encoder_hidden_dims[0]))
         privileged_encoder_layers.append(activation)
         for l in range(len(privileged_encoder_hidden_dims)):
             if l == len(privileged_encoder_hidden_dims) - 1:
@@ -185,6 +187,25 @@ class ActorCriticAmpTs(nn.Module):
                 adaptation_module_layers.append(activation)
         self.adaptation_module = nn.Sequential(*adaptation_module_layers)
         self.add_module(f"adaptation_module", self.adaptation_module)
+
+
+        # Studnet Policy distillation module
+        student_distillation_layers = []
+        student_distillation_layers.append(nn.Linear(student_mask_dim, actor_hidden_dims[0]))
+        student_distillation_layers.append(activation)
+        for l in range(len(actor_hidden_dims)):
+            if l == len(actor_hidden_dims) - 1:
+                student_distillation_layers.append(nn.Linear(actor_hidden_dims[l], num_actions))
+            elif l == len(actor_hidden_dims) - 2:
+                student_distillation_layers.append(nn.Linear(actor_hidden_dims[l], actor_hidden_dims[l + 1]))
+                student_distillation_layers.append(activation_output)
+            else:
+                student_distillation_layers.append(nn.Linear(actor_hidden_dims[l], actor_hidden_dims[l + 1]))
+                student_distillation_layers.append(activation)
+        self.student_distillation_actor = nn.Sequential(*student_distillation_layers)
+        self.add_module(f"student_distillation_actor", self.student_distillation_actor)
+
+
 
 
         # LSTM Encoder
@@ -260,6 +281,7 @@ class ActorCriticAmpTs(nn.Module):
         print(f"Actor MLP: {self.actor}")
         print(f"Critic MLP: {self.critic}")
         print(f"Actor_copy MLP: {self.actor_copy}")
+        print(f"Student Disillation Actor: {self.student_distillation_actor}")
 
         # print(f"Transformer encoder: {self.Transformer_encoder}")
 
@@ -444,6 +466,33 @@ class ActorCriticAmpTs(nn.Module):
         policy_info["teacher_latents"] = teacher_latent.detach().cpu().numpy()
         return actions_mean
 
+    def act_student(self, observations, observation_history, disable_mask, policy_info={}):
+        """
+        Selects actions for the student policy, incorporating the disable mask.
+
+        Args:
+            observations (Tensor): Current proprioception state.
+            observation_history (Tensor): History of proprioception states.
+            disable_mask (Tensor): Mask indicating disabled joints or actuators.
+            policy_info (dict, optional): Dictionary to log additional information.
+
+        Returns:
+            Tensor: Predicted actions by the student policy.
+        """
+        # Encode observation history into a latent representation
+        student_latent = self.adaptation_module(observation_history)
+
+
+        # Append disable mask to the input
+        combined_input = torch.cat((observations, student_latent, disable_mask), dim=-1)
+
+        # Pass through the student policy actor
+        actions_mean = self.student_distillation_actor(combined_input)
+
+        # Log the latent for debugging or analysis
+        policy_info["latents"] = student_latent.detach().cpu().numpy()
+
+        return actions_mean
     # def act_inference(self, observations, observation_history, privileged_observations=None, policy_info={}):
     #     """
     #     Performs action selection during inference.

@@ -39,7 +39,8 @@ class A1AMPTSCfg( LeggedRobotCfg ):
     class env( LeggedRobotCfg.env ):
         num_envs = 500
         include_history_steps = None  # Number of steps of history to include.
-        num_observations = 48
+        # num_observations = 48
+        num_observations = 60
         # num_observations = 45+6
         num_privileged_obs = 39+187
         num_terrain_obs = 187
@@ -54,6 +55,8 @@ class A1AMPTSCfg( LeggedRobotCfg ):
         # foot_type = 'non_point_foot'
         # num_actions = 14
         # num_policy_outputs = 14# 
+        mask_joint = [0,1,2]
+        mask_type = True
 
 
     
@@ -235,6 +238,7 @@ class A1AMPTSCfg( LeggedRobotCfg ):
             dof_pos_limits = -1.0
             # vel_smoothness = -0.1
             target_smoothness = -0.01
+            disable_joint_penalty = 0.5
             # arm_dof_pos = -2.5e-5
             # target_smoothness = -0.001
             # termination = 0.0
@@ -269,11 +273,12 @@ class A1AMPTSCfg( LeggedRobotCfg ):
         gamepad_commands = True
 
         class ranges:
-            # lin_vel_x = [-1.0, 2.0] # min max [m/s]
-            lin_vel_x = [0.0,0.0] # min max [m/s]
-            # lin_vel_y = [-0.01, 0.01]   # min max [m/s]
-            lin_vel_y = [0.0, 0.0]   # min max [m/s]
-            ang_vel_yaw = [0.0,0.0]    # min max [rad/s]
+            lin_vel_x = [-1.0, 2.0] # min max [m/s]
+            # lin_vel_x = [0.0,0.0] # min max [m/s]
+            lin_vel_y = [-0.5, 0.5]   # min max [m/s]
+            # lin_vel_y = [0.0, 0.0]   # min max [m/s]
+            ang_vel_yaw = [-0.7,0.7]    # min max [rad/s]
+            # ang_vel_yaw = [,0.0]    # min max [rad/s]
             heading = [-3.14, 3.14]
 
 class A1AMPTSCfgPPO( LeggedRobotCfgPPO ):
